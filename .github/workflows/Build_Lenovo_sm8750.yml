@@ -6,16 +6,16 @@ on:
   workflow_dispatch:
     inputs:
       ksu_type:
-        description: "📝请选择要集成的KSU："
+        description: "📝Select the KSU to integrate:"
         required: true
         type: choice
         options:
           - 'SukiSU'
           - 'ReSukiSU'
         default: 'ReSukiSU'
-        
+
       kernel_version:
-        description: "📝请选择要编译的版本："
+        description: "📝Select the version to build:"
         required: true
         type: choice
         options:
@@ -25,53 +25,53 @@ on:
         default: '6.6.89'
 
       custom_kernel_suffix:
-        description: "✏️ 自定义内核名称 (留空默认官核名称)"
+        description: "✏️ Custom kernel name (leave blank to use the stock kernel name)"
         required: false
         default: ''
-      
+
       custom_kernel_time:
-        description: "⏰ 自定义构建时间 (留空默认官核时间)"
+        description: "⏰ Custom build time (leave blank to use the stock kernel time)"
         required: false
         default: ''
 
       enable_bbg:
-        description: "开启BBG基带守护"
+        description: "Enable BBG baseband guard"
         required: false
         default: false
         type: boolean
 
       enable_ReKernel:
-        description: "启用Re-Kernel支持"
+        description: "Enable Re-Kernel support"
         required: false
         default: false
         type: boolean
-      
+
       enable_Adios:
-        description: "启用ADIOS IO调度器支持"
+        description: "Enable ADIOS I/O scheduler support"
         required: true
         default: true
         type: boolean
 
       enable_kpm:
-        description: "启用KPM"
+        description: "Enable KPM"
         required: false
         default: true
         type: boolean
-      
+
       enable_susfs:
-        description: "启用SUSFS"
+        description: "Enable SUSFS"
         required: true
         default: true
         type: boolean
 
       enable_signed:
-        description: "使用AOSP密钥签名boot"
+        description: "Sign boot with AOSP keys"
         required: false
         default: true
         type: boolean
 
-      
-       
+
+
 jobs:
   build:
     name: Build_${{ github.event.inputs.kernel_version }}
@@ -92,7 +92,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - name: ⚙️ Set Kernel version config(设置对应内核版本配置文件)
+      - name: ⚙️ Set Kernel version config
         run: |
           echo "KERNEL_TIME=${{ env.CUSTOM_KERNEL_TIME }}" >> $GITHUB_ENV
           case "${{ env.KERNEL_VERSION }}" in
@@ -122,9 +122,9 @@ jobs:
                 ;;
             esac
             echo "DEFAULT_SUFFIX=$DEFAULT_SUFFIX" >> $GITHUB_ENV
-            echo "使用原官核名称：$DEFAULT_SUFFIX"
+            echo "Using stock kernel name: $DEFAULT_SUFFIX"
           else
-            echo "使用自定义名称: ${{ env.CUSTOM_KERNEL_SUFFIX }}"
+            echo "Using custom name: ${{ env.CUSTOM_KERNEL_SUFFIX }}"
             echo "DEFAULT_SUFFIX=${{ env.CUSTOM_KERNEL_SUFFIX }}" >> $GITHUB_ENV
           fi
           if [ -z "${{ env.CUSTOM_KERNEL_TIME }}" ]; then
@@ -140,45 +140,45 @@ jobs:
                 ;;
             esac
             echo "KERNEL_TIME=$KERNEL_TIME" >> $GITHUB_ENV
-            echo "使用官核时间：$KERNEL_TIME"
+            echo "Using stock kernel time: $KERNEL_TIME"
           else
-            echo "使用自定义构建时间: ${{ env.CUSTOM_KERNEL_TIME }}"
+            echo "Using custom build time: ${{ env.CUSTOM_KERNEL_TIME }}"
             echo "KERNEL_TIME=${{ env.CUSTOM_KERNEL_TIME }}" >> $GITHUB_ENV
           fi
 
-      - name: 🛠 Install dependencies and Initialize repo and sync （安装环境依赖+初始化源码仓库及工具链）
+      - name: 🛠 Install dependencies, initialize repo, and sync
         run: |
           rm -rf kernel_workspace
           mkdir kernel_workspace
           cd kernel_workspace
-          
+
           sudo apt-mark hold firefox &&
           sudo apt-mark hold libc-bin &&
           sudo apt purge man-db &&
           sudo rm -rf /var/lib/man-db/auto-update &&
           sudo apt update &&
           sudo apt-get install -y --no-install-recommends binutils python-is-python3 libssl-dev libelf-dev ccache p7zip-full zstd &
-          echo "正在克隆源码仓库..."
+          echo "Cloning source repository..."
           aria2c -s16 -x16 -k1M "https://github.com/showdo/Build_Lenovo_sm8750/releases/download/common/${{ env.os_patch_level }}.tar.gz" -o common.tar.gz && \
           mkdir -p common && \
           tar -xzf common.tar.gz -C common && \
           rm -f common.tar.gz &
 
-          
-          echo "正在克隆llvm-clang18工具链..." &&
+
+          echo "Cloning llvm-clang18 toolchain..." &&
           mkdir -p clang18 &&
           aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/clang-r510928.zip -o clang.zip &&
           unzip -q clang.zip -d clang18 &&
           rm -rf clang.zip &
-          
-          echo "正在克隆构建工具..." &&
+
+          echo "Cloning build tools..." &&
           aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/build-tools.zip -o build-tools.zip &&
           unzip -q build-tools.zip &&
           rm -rf build-tools.zip &
-          
+
           wait
-          echo "所有源码及llvm-Clang18工具链初始化完成！"
-          echo "正在去除 ABI 保护 & 去除 dirty 后缀..."
+          echo "All sources and the llvm-Clang18 toolchain have been initialized!"
+          echo "Removing ABI protection files and the dirty suffix..."
           rm common/android/abi_gki_protected_exports_* || true
           # if [[ "${{ env.KERNEL_VERSION }}" != "6.6.102" ]]; then
             for f in common/scripts/setlocalversion; do
@@ -187,15 +187,15 @@ jobs:
             done
           # fi
 
-      - name: 🛠 Set ccache DIR(配置ccache目录)
+      - name: 🛠 Set ccache dir
         run: |
           echo "CCACHE_DIR=$HOME/.ccache_${{ env.KSU_TYPE }}_${{ env.KERNEL_VERSION }}" >> $GITHUB_ENV
           echo "CCACHE_MAXSIZE=10G" >> $GITHUB_ENV
-          echo "当前磁盘空间："
+          echo "Current disk space:"
           df -h
-          echo "当前构建内核：${{ env.KERNEL_VERSION }}"
+          echo "Kernel version being built: ${{ env.KERNEL_VERSION }}"
 
-      - name: 📥 Restore ccache (载入当前机型的ccache缓存)
+      - name: 📥 Restore ccache
         id: ccache-restore
         uses: actions/cache/restore@v5
         with:
@@ -204,7 +204,7 @@ jobs:
           restore-keys: |
             ccache-${{ env.KSU_TYPE }}-${{ env.KERNEL_VERSION }}-
 
-      - name: 🔎 Find public ccache in releases (查找公共缓存)
+      - name: 🔎 Find public ccache in releases
         id: public-ccache
         if: ${{ steps.ccache-restore.outputs.cache-matched-key == '' }}
         uses: actions/github-script@v8
@@ -224,10 +224,10 @@ jobs:
             const exactAssetName = `ccache-${deviceName}.tar.zst`;
             const legacyAssetPattern = new RegExp(`^ccache-(.+-)?${escape_regex(deviceName)}(-[0-9]+)?\\.tar\\.zst$`);
 
-            core.info(`当前仓库无匹配 ccache，开始按机型查找公共缓存：${deviceName}`);
-            core.info(`缓存来源仓库：${owner}/${repo}`);
-            core.info(`缓存来源标签：${releaseTag}`);
-            core.info(`优先匹配公共缓存文件：${exactAssetName}`);
+            core.info(`No matching ccache found in the current repository. Searching public cache by device: ${deviceName}`);
+            core.info(`Cache source repository: ${owner}/${repo}`);
+            core.info(`Cache source tag: ${releaseTag}`);
+            core.info(`Preferred public cache asset: ${exactAssetName}`);
 
             let release;
             try {
@@ -238,7 +238,7 @@ jobs:
               });
               release = response.data;
             } catch (error) {
-              core.info(`未找到公共缓存 release: ${releaseTag}`);
+              core.info(`Public cache release not found: ${releaseTag}`);
               return;
             }
 
@@ -264,16 +264,16 @@ jobs:
             }
 
             if (!selected) {
-              core.info('未找到可用的公共 ccache 资产，将使用空缓存继续构建');
+              core.info('No usable public ccache asset found. Continuing with an empty cache.');
               return;
             }
 
-            core.info(`找到公共缓存：${selected.name} (${selected.repo}@${selected.tag})`);
+            core.info(`Found public cache: ${selected.name} (${selected.repo}@${selected.tag})`);
             core.setOutput('asset-name', selected.name);
             core.setOutput('release-tag', selected.tag);
             core.setOutput('source-repo', selected.repo);
 
-      - name: 📦 Restore public ccache from releases (恢复公共缓存)
+      - name: 📦 Restore public ccache from releases
         if: ${{ steps.ccache-restore.outputs.cache-matched-key == '' && steps.public-ccache.outputs.asset-name != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
@@ -282,7 +282,7 @@ jobs:
           PUBLIC_CACHE_ASSET: ${{ steps.public-ccache.outputs.asset-name }}
         run: |
           set -euo pipefail
-          echo "当前仓库无匹配缓存，开始下载公共缓存：$PUBLIC_CACHE_ASSET"
+          echo "No matching cache found in the current repository. Downloading public cache: $PUBLIC_CACHE_ASSET"
           rm -f "$PUBLIC_CACHE_ASSET"
           rm -rf "$CCACHE_DIR"
           gh release download "$PUBLIC_CACHE_TAG" --repo "$PUBLIC_CACHE_REPO" --pattern "$PUBLIC_CACHE_ASSET" --dir .
@@ -290,7 +290,7 @@ jobs:
           tar --use-compress-program=unzstd -xf "$PUBLIC_CACHE_ASSET" -C "$TEMP_EXTRACT_DIR"
           EXTRACTED_CCACHE_DIR="$(find "$TEMP_EXTRACT_DIR" -maxdepth 1 -mindepth 1 -type d -name '.ccache_*' | head -n 1)"
           if [ -z "$EXTRACTED_CCACHE_DIR" ]; then
-            echo "::error::公共缓存解压后未找到 .ccache_* 目录"
+            echo "::error::No .ccache_* directory found after extracting the public cache"
             exit 1
           fi
 
@@ -302,42 +302,42 @@ jobs:
           test -d "$CCACHE_DIR"
           ls -lah "$CCACHE_DIR" | head -n 20
           echo "PUBLIC_CCACHE_USED=true" >> "$GITHUB_ENV"
-          echo "公共缓存恢复完成：$CCACHE_DIR"
-      
-      - name: 📥 Init ccache (初始化配置ccache)
+          echo "Public cache restore completed: $CCACHE_DIR"
+
+      - name: 📥 Init ccache
         run: |
-          # 设置ccache环境变量
+          # Set ccache environment variables
           export CCACHE_COMPILERCHECK="none"
           export CCACHE_BASEDIR="${{ github.workspace }}"
           export CCACHE_NOHASHDIR="true"
           export CCACHE_HARDLINK="true"
           export CCACHE_DIR="${{ env.CCACHE_DIR }}"
           export CCACHE_MAXSIZE="${{ env.CCACHE_MAXSIZE }}"
-          
-          # 确保ccache目录存在
+
+          # Ensure the ccache directory exists
           mkdir -p "$CCACHE_DIR"
-          
-          # 每次运行都重新配置缓存大小
-          echo "配置ccache缓存大小为: $CCACHE_MAXSIZE"
+
+          # Reconfigure cache size on every run
+          echo "Configuring ccache max size: $CCACHE_MAXSIZE"
           ccache -M "$CCACHE_MAXSIZE"
           ccache -o compression=true
-          
-          # 显示初始缓存状态
-          echo "ccache初始状态:"
+
+          # Show initial cache status
+          echo "Initial ccache status:"
           ccache -s
-          
-          # 如果缓存恢复命中，显示详细信息
+
+          # Show detailed info when cache restore hits
           if [ -n "${{ steps.ccache-restore.outputs.cache-matched-key }}" ]; then
-            echo "ccache缓存命中详情: ${{ steps.ccache-restore.outputs.cache-matched-key }}"
+            echo "ccache hit details: ${{ steps.ccache-restore.outputs.cache-matched-key }}"
             ccache -sv
           elif [ "${PUBLIC_CCACHE_USED:-false}" = 'true' ]; then
-            echo "已恢复公共 ccache，当前缓存详情:"
+            echo "Public ccache restored. Current cache details:"
             ccache -sv
           else
-            echo "未命中仓库缓存，也未找到公共缓存，将从空缓存开始构建"
+            echo "No repository cache hit and no public cache found. Building with an empty cache."
           fi
 
-      - name: 🔧 Add Re-Kernel Support (添加 Re-Kernel 支持)
+      - name: 🔧 Add Re-Kernel support
         if: ${{ env.ENABLE_REKERNEL == 'true' }}
         working-directory: kernel_workspace/common
         run: |
@@ -347,26 +347,26 @@ jobs:
           rm -f Re-Kernel_Support.patch
           echo "CONFIG_REKERNEL=m" >> arch/arm64/configs/gki_defconfig
           echo "CONFIG_REKERNEL_NETWORK=y" >> arch/arm64/configs/gki_defconfig
-          echo "✅ Re-Kernel配置已注入"
+          echo "✅ Re-Kernel config injected"
 
-      - name: 🔧 Add adios_ioscheduler (添加 adios_ioscheduler)
+      - name: 🔧 Add adios_ioscheduler
         working-directory: kernel_workspace/common
         run: |
-          echo "开始添加 ADIOS I/O 调度器支持..."
+          echo "Enabling ADIOS I/O scheduler support..."
           PATCH_FILE="${GITHUB_WORKSPACE}/.github/workflows/tools/adios_ioscheduler.patch"
           if [ ! -f "$PATCH_FILE" ]; then
-            echo "::error::未找到 ADIOS I/O 调度器补丁文件"
+            echo "::error::ADIOS I/O scheduler patch file not found"
             exit 1
           fi
           if [ -f "block/adios.c" ]; then
-            echo "✓ ADIOS I/O 调度器文件已存在，跳过应用补丁"
+            echo "✓ ADIOS I/O scheduler files already exist. Skipping patch application."
           else
             cp "$PATCH_FILE" ./adios_ioscheduler.patch
-            echo "正在应用 ADIOS I/O 调度器补丁..."
+            echo "Applying ADIOS I/O scheduler patch..."
             if patch -p1 --ignore-whitespace -F 3 < adios_ioscheduler.patch 2>&1 | tee /tmp/adios_patch.log; then
-              echo "✓ ADIOS I/O 调度器补丁应用成功"
+              echo "✓ ADIOS I/O scheduler patch applied successfully"
             else
-              echo "::warning::ADIOS 补丁应用出现问题"
+              echo "::warning::Issue encountered while applying the ADIOS patch"
               if grep -q "malformed patch" /tmp/adios_patch.log; then
                 patch -p1 --force --ignore-whitespace < adios_ioscheduler.patch || true
               fi
@@ -376,13 +376,13 @@ jobs:
           if ! grep -q "CONFIG_MQ_IOSCHED_ADIOS" arch/arm64/configs/gki_defconfig; then
             echo "CONFIG_MQ_IOSCHED_ADIOS=y" >> arch/arm64/configs/gki_defconfig
             echo "CONFIG_MQ_IOSCHED_DEFAULT_ADIOS=y" >> arch/arm64/configs/gki_defconfig
-            echo "✓ 已启用 ADIOS I/O 调度器支持"
+            echo "✓ ADIOS I/O scheduler support enabled"
           fi
-          echo "✓ ADIOS I/O 调度器支持配置完成"
-          
-      - name: ⚙️ apply lz4 lz4 1.10.0 & zstd 1.5.7 Patch (应用lz4 1.10.0 & zstd 1.5.7补丁)
+          echo "✓ ADIOS I/O scheduler support setup completed"
+
+      - name: ⚙️ Apply lz4 1.10.0 & zstd 1.5.7 patch
         run: |
-          echo "正在添加lz4 1.10.0 & zstd 1.5.7补丁…"
+          echo "Applying lz4 1.10.0 & zstd 1.5.7 patch..."
           cd kernel_workspace
           git clone https://github.com/cctv18/oppo_oplus_realme_sm8750.git
           cp ./oppo_oplus_realme_sm8750/zram_patch/001-lz4.patch ./common/
@@ -391,24 +391,24 @@ jobs:
           cd ./common
           git apply -p1 < 001-lz4.patch || true
           patch -p1 < 002-zstd.patch || true
-          
-      - name: 🛠 Set Baseband-guard (配置BBG基带守护)
+
+      - name: 🛠 Set baseband guard
         if: ${{ env.ENABLE_BBG == 'true' }}
         run: |
-          echo "正在启用启用内核级基带保护支持…"
+          echo "Enabling kernel-level baseband protection support..."
           cd kernel_workspace
           wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash
           echo "CONFIG_BBG=y" >> ./common/arch/arm64/configs/gki_defconfig
           sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' ./common/security/Kconfig
 
-      
-      - name: ⚙️ Set ${{ env.KSU_TYPE }} (设置${{ env.KSU_TYPE }})
+
+      - name: ⚙️ Set ${{ env.KSU_TYPE }}
         run: |
             cd kernel_workspace
-            echo "正在配置${{ env.KSU_TYPE }}..."
+            echo "Configuring ${{ env.KSU_TYPE }}..."
             if [ "${{ env.KSU_TYPE }}" == 'ReSukiSU' ]; then
               curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s main
-              cd ./KernelSU 
+              cd ./KernelSU
               KSU_VERSION=$(expr $(git rev-list --count main) + 30700 2>/dev/null || echo 114514)
               echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
               echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
@@ -416,19 +416,19 @@ jobs:
               curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s builtin
               cd ./KernelSU
               GIT_COMMIT_HASH=$(git rev-parse --short=8 HEAD)
-              echo "当前提交哈希: $GIT_COMMIT_HASH"
+              echo "Current commit hash: $GIT_COMMIT_HASH"
               export KSU_VERSION=$KSU_VERSION
               for i in {1..3}; do
-                KSU_API_VERSION=$(curl -s "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/builtin/kernel/Makefile" | 
-                  grep -m1 "KSU_VERSION_API :=" | 
-                  awk -F'= ' '{print $2}' | 
+                KSU_API_VERSION=$(curl -s "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/builtin/kernel/Makefile" |
+                  grep -m1 "KSU_VERSION_API :=" |
+                  awk -F'= ' '{print $2}' |
                   tr -d '[:space:]')
                 [ -n "$KSU_API_VERSION" ] && break || sleep 1
               done
               [ -z "$KSU_API_VERSION" ] && KSU_API_VERSION="4.1.0"
               echo "KSU_API_VERSION=$KSU_API_VERSION" >> $GITHUB_ENV
               VERSION_DEFINITIONS=$'define get_ksu_version_full\nv\\$1-'"$GIT_COMMIT_HASH"$'-TG@qdykernel\nendef\n\nKSU_VERSION_API := '"$KSU_API_VERSION"$'\nKSU_VERSION_FULL := v'"$KSU_API_VERSION"$'-'"$GIT_COMMIT_HASH"$'-TG@qdykernel'
-              
+
               sed -i '/define get_ksu_version_full/,/endef/d' kernel/Makefile
               sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
               sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile
@@ -442,10 +442,10 @@ jobs:
               echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
               grep -A10 "REPO_OWNER" kernel/Makefile
               grep "KSU_VERSION_FULL" kernel/Makefile
-              echo "SukiSU版本号: v${KSU_API_VERSION}-${GIT_COMMIT_HASH}-TG@qdykernel"
+              echo "SukiSU version: v${KSU_API_VERSION}-${GIT_COMMIT_HASH}-TG@qdykernel"
             fi
 
-      - name: 🔧 Set up SUSFS (配置 SUSFS)
+      - name: 🔧 Set up SUSFS
         if: ${{ env.ENABLE_SUSFS == 'true' }}
         run: |
           cd kernel_workspace
@@ -459,22 +459,22 @@ jobs:
           patch -p1 -N -F 3 < 69_hide_stuff.patch || true
           case "${{ env.KERNEL_VERSION }}" in
             6.6.56)
-              echo "[INFO] 当前构建内核版本为6.6.56，正在修复 undeclared identifier 'vma' 编译错误"
+              echo "[INFO] Building kernel 6.6.56. Fixing the undeclared identifier 'vma' build error"
               cd ./fs/proc
               sed -i 's/vma = find_vma(mm, start_vaddr);/struct vm_area_struct *vma = find_vma(mm, start_vaddr);/' task_mmu.c
               ;;
           esac
 
-      - name: 🔧 Set gki_defconfig (设置编译配置) 
+      - name: 🔧 Set gki_defconfig
         run: |
           cd kernel_workspace
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
-          
+
           if [ "${{ env.KSU_TYPE }}" == 'ReSukiSU' ]; then
             echo 'CONFIG_KSU_FULL_NAME_FORMAT="%TAG_NAME%-%COMMIT_SHA%-Re-TG@qdykernel"' >> ./common/arch/arm64/configs/gki_defconfig
           fi
-          
+
           if [ "${{ env.ENABLE_SUSFS }}" == 'true' ];then
             echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -492,30 +492,30 @@ jobs:
             echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> ./common/arch/arm64/configs/gki_defconfig
           else
-            echo "未启用SUSFS 跳过SUSFS配置"
+            echo "SUSFS is not enabled. Skipping SUSFS configuration."
           fi
-          
+
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
 
           echo "CONFIG_CC_OPTIMIZE_FOR_PERFORMANCE=y" >> ./common/arch/arm64/configs/gki_defconfig
-          
+
           #Remove check_defconfig
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
 
-      - name: 🔧 Set Kernel name (写入内核名称)
+      - name: 🔧 Set kernel name
         run: |
           cd kernel_workspace
-          echo "自定义后缀: $DEFAULT_SUFFIX"
+          echo "Custom suffix: $DEFAULT_SUFFIX"
           ESCAPED_SUFFIX=$(printf '%s\n' "$DEFAULT_SUFFIX" | sed 's:[\/&]:\\&:g')
           sudo sed -i "s/-4k/$ESCAPED_SUFFIX/g" ./common/arch/arm64/configs/gki_defconfig
           sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
 
-      - name: 📥 Start build timer (构建计时开始)
-        run: 
+      - name: 📥 Start build timer
+        run:
           echo "BUILD_START=$(date +%s)" >> $GITHUB_ENV
 
-      - name: 🔨 Build Kernel (构建内核)
+      - name: 🔨 Build kernel
         run: |
           WORKDIR="$(pwd)"
           export PATH="/usr/lib/ccache:$PATH"
@@ -524,11 +524,11 @@ jobs:
           CLANG_DIR="$WORKDIR/kernel_workspace/clang18/bin"
           CLANG_VERSION="$($CLANG_DIR/clang --version | head -n 1)"
           LLD_VERSION="$($CLANG_DIR/ld.lld --version | head -n 1)"
-          echo "编译器信息:"
-          echo "Clang版本: $CLANG_VERSION"
-          echo "LLD版本: $LLD_VERSION"
-          pahole_version=$(pahole --version 2>/dev/null | head -n1); [ -z "$pahole_version" ] && echo "pahole版本：未安装" || echo "pahole版本：$pahole_version"
-          
+          echo "Compiler info:"
+          echo "Clang version: $CLANG_VERSION"
+          echo "LLD version: $LLD_VERSION"
+          pahole_version=$(pahole --version 2>/dev/null | head -n1); [ -z "$pahole_version" ] && echo "pahole version: not installed" || echo "pahole version: $pahole_version"
+
           export CCACHE_LOGFILE="${{ github.workspace }}/kernel_workspace/ccache.log"
           export CCACHE_COMPILERCHECK="none"
           export CCACHE_BASEDIR="${{ github.workspace }}"
@@ -537,7 +537,7 @@ jobs:
           export CCACHE_DIR="${{ env.CCACHE_DIR }}"
           export CCACHE_MAXSIZE="3G"
           echo "sloppiness = file_stat_matches,include_file_ctime,include_file_mtime,pch_defines,file_macro,time_macros" >> "$CCACHE_DIR/ccache.conf"
-          
+
           cd kernel_workspace/common
           wget https://github.com/cctv18/oppo_oplus_realme_sm8750/raw/refs/heads/main/lib/libfakestat.so
           wget https://github.com/cctv18/oppo_oplus_realme_sm8750/raw/refs/heads/main/lib/libfaketimeMT.so
@@ -548,73 +548,73 @@ jobs:
           echo "FAKETIME=$FAKETIME" >> $GITHUB_ENV
           SO_DIR=$(pwd)
           export PRELOAD_LIBS="$SO_DIR/libfakestat.so $SO_DIR/libfaketimeMT.so"
-          #创建 CC (编译器) 包装器
+          # Create the CC (compiler) wrapper
           echo '#!/bin/bash' > cc-wrapper
           echo 'export LD_PRELOAD="'$PRELOAD_LIBS'"' >> cc-wrapper
           echo 'export FAKESTAT="'$FAKESTAT'"' >> cc-wrapper
           echo 'export FAKETIME="'$FAKETIME'"' >> cc-wrapper
           echo 'ccache clang "$@"' >> cc-wrapper
-          #创建 LD (链接器) 包装器
+          # Create the LD (linker) wrapper
           echo '#!/bin/bash' > ld-wrapper
           echo 'export LD_PRELOAD="'$PRELOAD_LIBS'"' >> ld-wrapper
           echo 'export FAKESTAT="'$FAKESTAT'"' >> ld-wrapper
           echo 'export FAKETIME="'$FAKETIME'"' >> ld-wrapper
           echo 'ld.lld "$@"' >> ld-wrapper
-          
-          # 测试时间劫持测试是否正常工作
-          echo "--- [Wrapper Test] 正在创建通用的时间劫持测试脚本 ---"
+
+          # Verify that time hijacking works correctly
+          echo "--- [Wrapper Test] Creating a generic time hijack test script ---"
           echo '#!/bin/bash' > test-wrapper.sh
           echo 'export LD_PRELOAD="'$PRELOAD_LIBS'"' >> test-wrapper.sh
           echo 'export FAKESTAT="'$FAKESTAT'"' >> test-wrapper.sh
           echo 'export FAKETIME="'$FAKETIME'"' >> test-wrapper.sh
-          echo 'echo ">>> Wrapper 内部环境检查完毕."' >> test-wrapper.sh
-          echo 'exec "$@"' >> test-wrapper.sh # 执行所有传入的参数
+          echo 'echo ">>> Wrapper internal environment check complete."' >> test-wrapper.sh
+          echo 'exec "$@"' >> test-wrapper.sh # Execute all passed arguments
           chmod +x test-wrapper.sh
-          echo "--- [Wrapper Test] 正在测试 (date) 命令 ---"
+          echo "--- [Wrapper Test] Testing the date command ---"
           ./test-wrapper.sh date
-          echo "--- [Wrapper Test] 正在测试 (stat) 命令 ---"
+          echo "--- [Wrapper Test] Testing the stat command ---"
           ./test-wrapper.sh stat ./Makefile
-          echo "--- [Wrapper Test] 测试完毕 ---"
+          echo "--- [Wrapper Test] Test completed ---"
           chmod +x cc-wrapper ld-wrapper
-          echo "--- 编译前环境时间: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
-          echo "--- 编译前环境文件时间戳: ---"
+          echo "--- Pre-build environment time: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
+          echo "--- Pre-build environment file timestamp: ---"
           LD_PRELOAD=$PRELOAD_LIBS stat ./Makefile
 
           export KBUILD_BUILD_TIMESTAMP="${KERNEL_TIME}"
-          
-          #在构建内核的同时清除不必要的.NET, Android NDK, Haskell, CodeQL运行库，清理空间且不阻塞后续步骤运行
+
+          # Clear unnecessary .NET, Android NDK, Haskell, and CodeQL runtimes while the kernel builds to free space without blocking later steps
           sudo rm -rf /usr/share/dotnet &
           sudo rm -rf /usr/local/lib/android &
           sudo rm -rf /opt/ghc &
           sudo rm -rf /opt/hostedtoolcache/CodeQL &
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error gki_defconfig &&
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error Image
-          
-          # 编译后时间劫持二次校验
-          echo "--- 编译后环境时间: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
-          echo "--- 编译后环境文件时间戳: ---"
+
+          # Secondary time hijack verification after the build
+          echo "--- Post-build environment time: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
+          echo "--- Post-build environment file timestamp: ---"
           LD_PRELOAD=$PRELOAD_LIBS stat ./Makefile
-          echo "内核编译完成！"
-          echo "ccache状态："
+          echo "Kernel build completed!"
+          echo "ccache status:"
           ccache -s
-          echo "编译后空间:"
+          echo "Disk space after build:"
           df -h
 
-      - name: 🕒 Calculate build time (计算构建时间)
+      - name: 🕒 Calculate build time
         run: |
           END=$(date +%s)
           TIME=$((END - BUILD_START))
           echo "BUILD_TIME=$TIME" >> $GITHUB_ENV
           echo "Build time: $TIME seconds"
 
-      - name: 📥 Save ccache if needed (构建时间较长或首次落地本地缓存时保存)
+      - name: 📥 Save ccache if needed
         if: ${{ env.BUILD_TIME > 480 || steps.ccache-restore.outputs.cache-matched-key == '' }}
         uses: actions/cache/save@v5
         with:
           path: ${{ env.CCACHE_DIR }}
           key: ccache-${{ env.KSU_TYPE }}-${{ env.KERNEL_VERSION }}-${{ github.run_id }}
 
-      - name: 🧹 Clean old ccache (清理旧缓存)
+      - name: 🧹 Clean old ccache
         if: env.BUILD_TIME > 480
         uses: actions/github-script@v8
         env:
@@ -628,8 +628,8 @@ jobs:
             let page = 1;
             let deleted = 0;
 
-            core.info('构建时间超过8分钟，已保存ccache缓存');
-            core.info(`正在清理旧缓存，匹配前缀: ${prefix}`);
+            core.info('Build time exceeded 8 minutes. ccache has been saved.');
+            core.info(`Cleaning old caches with matching prefix: ${prefix}`);
 
             while (true) {
               const response = await github.rest.actions.getActionsCacheList({
@@ -662,31 +662,31 @@ jobs:
               page++;
             }
 
-            core.info(`旧缓存清理完成，共删除 ${deleted} 个缓存`);
+            core.info(`Old cache cleanup completed. Deleted ${deleted} caches.`);
 
-      - name: 📦 Apply KPM and patch the kernel (应用KPM并修补内核)
+      - name: 📦 Apply KPM and patch the kernel
         if: ${{ env.ENABLE_KPM == 'true' }}
         run: |
-          echo "正在应用KPM并修补内核..."
+          echo "Applying KPM and patching the kernel..."
           cd kernel_workspace/common/out/arch/arm64/boot
           curl -LO https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/0.12.2/patch_linux
           chmod +x patch_linux
           ./patch_linux
           rm -f Image
           mv oImage Image
-          
-      - name: 📦 ReName Image  (修改镜像名)
+
+      - name: 📦 Rename image
         run: |
           cd kernel_workspace/common/out/arch/arm64/boot
           cp ./Image "./kernel"
 
-      - name: 📤 Upload Image (上传 Image)
+      - name: 📤 Upload Image
         uses: actions/upload-artifact@v5
         with:
          name: kernel_image
          path: kernel_workspace/common/out/arch/arm64/boot/kernel
-         
-      - name: 📦 Sign boot using AOSP test key (使用AOSP测试密钥签名boot)
+
+      - name: 📦 Sign boot using AOSP test key
         if: ${{ env.ENABLE_SIGNED == 'true' }}
         run: |
           cd kernel_workspace
@@ -703,14 +703,14 @@ jobs:
           mv ./new-boot.img ./boot.img
           python3 rebuild_avb.py --chained-mode
 
-      - name: 📤 Upload Signed boot (上传已签名的 boot)
+      - name: 📤 Upload signed boot
         if: ${{ env.ENABLE_SIGNED == 'true' }}
         uses: actions/upload-artifact@v5
         with:
          name: Boot_${{ env.KSUVER }}_${{ env.KERNEL_VERSION }}_${{ env.KSU_TYPE }}_AOSP_Signed
          path: kernel_workspace/boot_avb_tool/AOSP-Testkey-BootSigner-main/boot.img
 
-      - name: 🔎 Find Re-Kernel module zip (查找Re-Kernel最新模块并下载)
+      - name: 🔎 Find Re-Kernel module zip
         id: download-rekernel
         if: ${{ env.ENABLE_REKERNEL == 'true' }}
         uses: actions/github-script@v8
@@ -722,13 +722,13 @@ jobs:
             const repo = 'Re-Kernel';
             const kernelMajor = process.env.KERNEL_MAJOR;
 
-            core.info(`正在获取 ${owner}/${repo} 的最新 release...`);
+            core.info(`Fetching the latest release for ${owner}/${repo}...`);
 
             const release = await github.rest.repos.getLatestRelease({
               owner,
               repo,
             });
-            core.info(`最新版本: ${release.data.tag_name}`);
+            core.info(`Latest version: ${release.data.tag_name}`);
             const escapedKernel = kernelMajor.replace(/\./g, '\\.');
             const pattern = new RegExp(`^Re-Kernel-v[\\d.]+-${escapedKernel}\\.zip$`);
 
@@ -741,16 +741,16 @@ jobs:
             }
 
             if (!targetAsset) {
-              core.setFailed(`未找到匹配的 Re-Kernel 模块资产 (模式: ${pattern.source})`);
+              core.setFailed(`No matching Re-Kernel module asset found (pattern: ${pattern.source})`);
               return;
             }
 
-            core.info(`找到目标资产: ${targetAsset.name} (${(targetAsset.size / 1024).toFixed(1)} KB)`);
+            core.info(`Found target asset: ${targetAsset.name} (${(targetAsset.size / 1024).toFixed(1)} KB)`);
             core.setOutput('asset-name', targetAsset.name);
             core.setOutput('download-url', targetAsset.browser_download_url);
             core.setOutput('tag-name', release.data.tag_name);
 
-      - name: 📥 Download Re-Kernel module (下载 Re-Kernel 模块)
+      - name: 📥 Download Re-Kernel module
         if: ${{ env.ENABLE_REKERNEL == 'true' }}
         working-directory: kernel_workspace
         env:
@@ -759,21 +759,21 @@ jobs:
           ARTIFACT_NAME: Re-Kernel-v${{ steps.download-rekernel.outputs.tag-name }}-6.6
         run: |
           set -euo pipefail
-          echo "正在下载 Re-Kernel 模块: $ASSET_NAME"
-          echo "下载地址: $DOWNLOAD_URL"
+          echo "Downloading Re-Kernel module: $ASSET_NAME"
+          echo "Download URL: $DOWNLOAD_URL"
           aria2c -s16 -x16 -k1M "$DOWNLOAD_URL" -o "$ASSET_NAME"
-          echo "✓ Re-Kernel 模块下载完成"
+          echo "✓ Re-Kernel module download completed"
           ls -lh "$ASSET_NAME"
-          echo "正在创建目录 $ARTIFACT_NAME 并解压模块..."
+          echo "Creating directory $ARTIFACT_NAME and extracting the module..."
           mkdir -p "$ARTIFACT_NAME"
           unzip -q "$ASSET_NAME" -d "$ARTIFACT_NAME"
-          echo "✓ 目录结构:"
+          echo "✓ Directory structure:"
           ls -lR "$ARTIFACT_NAME"
 
-      - name: 📤 Upload Re-Kernel module (上传 Re-Kernel 模块)
+      - name: 📤 Upload Re-Kernel module
         if: ${{ env.ENABLE_REKERNEL == 'true' }}
         uses: actions/upload-artifact@v5
         with:
           name: Re-Kernel-v${{ steps.download-rekernel.outputs.tag-name }}-6.6
           path: kernel_workspace/Re-Kernel-v${{ steps.download-rekernel.outputs.tag-name }}-6.6
-          
+
