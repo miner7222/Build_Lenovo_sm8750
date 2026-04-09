@@ -59,6 +59,12 @@ on:
         default: false
         type: boolean
 
+      enable_bbr_ecn:
+        description: "Enable BBR + ECN support"
+        required: false
+        default: false
+        type: boolean
+
       enable_ReKernel:
         description: "Enable Re-Kernel support"
         required: false
@@ -104,6 +110,7 @@ jobs:
       ENABLE_ADIOS: ${{ github.event.inputs.enable_Adios }}
       ENABLE_BBG: ${{ github.event.inputs.enable_bbg }}
       ENABLE_NETFILTER: ${{ github.event.inputs.enable_netfilter }}
+      ENABLE_BBR_ECN: ${{ github.event.inputs.enable_bbr_ecn }}
       ENABLE_SUSFS: ${{ github.event.inputs.enable_susfs }}
       ENABLE_SIGNED: ${{ github.event.inputs.enable_signed }}
     steps:
@@ -625,6 +632,19 @@ jobs:
 
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> ./common/arch/arm64/configs/gki_defconfig
+
+          if [ "${{ env.ENABLE_BBR_ECN }}" = 'true' ]; then
+            echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_NET_SCH_FQ=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_TCP_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IPV6_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_IP_NF_TARGET_ECN=y" >> ./common/arch/arm64/configs/gki_defconfig
+          fi
 
           if [ "${{ env.ENABLE_NETFILTER }}" = 'true' ]; then
             echo "CONFIG_BPF_STREAM_PARSER=y" >> ./common/arch/arm64/configs/gki_defconfig
