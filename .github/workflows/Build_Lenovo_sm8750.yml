@@ -549,6 +549,18 @@ jobs:
                 ;;
             esac
 
+      - name: 🔧 Add KernelSU manager signature compatibility
+        if: ${{ env.KSU_TYPE == 'KernelSU Next' }}
+        run: |
+          cd kernel_workspace/common/drivers/kernelsu
+          if [ ! -f kernel/apk_sign.c ]; then
+            echo "::warning::kernel/apk_sign.c not found. Skipping apk_sign patch."
+            exit 0
+          fi
+          wget https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8750/main/other_patch/apk_sign.patch -O apk_sign.patch
+          patch -p2 -N -F 3 < apk_sign.patch || true
+          rm -f apk_sign.patch
+
       - name: 🔧 Set up SUSFS
         if: ${{ env.ENABLE_SUSFS == 'true' }}
         run: |
