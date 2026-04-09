@@ -37,6 +37,16 @@ on:
         required: false
         default: ''
 
+      kernel_module_impl:
+        description: "🧩 Kernel module implementation"
+        required: true
+        type: choice
+        options:
+          - 'N/A'
+          - 'KPM'
+          - 'KPN'
+        default: 'N/A'
+
       enable_bbg:
         description: "Enable BBG baseband guard"
         required: false
@@ -52,12 +62,6 @@ on:
       enable_Adios:
         description: "Enable ADIOS I/O scheduler support"
         required: true
-        default: true
-        type: boolean
-
-      enable_kpm:
-        description: "Enable KPM"
-        required: false
         default: true
         type: boolean
 
@@ -85,6 +89,7 @@ jobs:
       KERNEL_VERSION: ${{ github.event.inputs.kernel_version }}
       CUSTOM_KERNEL_SUFFIX: ${{ github.event.inputs.custom_kernel_suffix }}
       CUSTOM_KERNEL_TIME: ${{ github.event.inputs.custom_kernel_time }}
+      KERNEL_MODULE_IMPL: ${{ github.event.inputs.kernel_module_impl }}
       STOCK_BUILD_USER: kleaf
       STOCK_BUILD_HOST: build-host
       STOCK_COMPILER_INFO: Android (11368308, +pgo, +bolt, +lto, +mlgo, based on r510928) clang version 18.0.0
@@ -92,7 +97,6 @@ jobs:
       ENABLE_REKERNEL: ${{ github.event.inputs.enable_ReKernel }}
       ENABLE_ADIOS: ${{ github.event.inputs.enable_Adios }}
       ENABLE_BBG: ${{ github.event.inputs.enable_bbg }}
-      ENABLE_KPM: ${{ github.event.inputs.enable_kpm }}
       ENABLE_SUSFS: ${{ github.event.inputs.enable_susfs }}
       ENABLE_SIGNED: ${{ github.event.inputs.enable_signed }}
     steps:
@@ -568,7 +572,12 @@ jobs:
         run: |
           cd kernel_workspace
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
+
+          if [ "${{ env.KERNEL_MODULE_IMPL }}" = 'KPN' ]; then
+            echo "CONFIG_KPM=n" >> ./common/arch/arm64/configs/gki_defconfig
+          else
+            echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
+          fi
 
           if [ "${{ env.KSU_TYPE }}" == 'ReSukiSU' ]; then
             echo 'CONFIG_KSU_FULL_NAME_FORMAT="%TAG_NAME%-%COMMIT_SHA%-Re"' >> ./common/arch/arm64/configs/gki_defconfig
@@ -765,14 +774,35 @@ jobs:
 
             core.info(`Old cache cleanup completed. Deleted ${deleted} caches.`);
 
-      - name: 📦 Apply KPM and patch the kernel
-        if: ${{ env.ENABLE_KPM == 'true' }}
+      - name: 📦 Apply kernel module implementation patch
+        if: ${{ env.KERNEL_MODULE_IMPL != 'N/A' }}
         run: |
-          echo "Applying KPM and patching the kernel..."
+          echo "Applying kernel module implementation patch: ${{ env.KERNEL_MODULE_IMPL }}"
           cd kernel_workspace/common/out/arch/arm64/boot
-          curl -LO https://github.com/ShirkNeko/SukiSU_KernelPatch_patch/releases/download/0.12.2/patch_linux
-          chmod +x patch_linux
-          ./patch_linux
+          if [ "${{ env.KERNEL_MODULE_IMPL }}" = "KPM" ]; then
+            PATCH_TOOL_RELEASE_JSON="$(curl -fsSL \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ github.token }}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/latest")"
+            PATCH_LINUX_URL="$(printf '%s' "$PATCH_TOOL_RELEASE_JSON" | python3 -c "import json,sys; data=json.load(sys.stdin); print(next(asset['browser_download_url'] for asset in data['assets'] if asset['name'] == 'patch_linux'))")"
+            curl -LSs "$PATCH_LINUX_URL" -o ./patch_linux
+            chmod +x ./patch_linux
+            ./patch_linux
+          else
+            PATCH_TOOL_REPO="KernelSU-Next/KPatch-Next"
+            PATCH_TOOL_RELEASE_JSON="$(curl -fsSL \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${{ github.token }}" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${PATCH_TOOL_REPO}/releases/latest")"
+            PATCH_TOOL_KPTOOLS_URL="$(printf '%s' "$PATCH_TOOL_RELEASE_JSON" | python3 -c "import json,sys; data=json.load(sys.stdin); print(next(asset['browser_download_url'] for asset in data['assets'] if asset['name'] == 'kptools-linux'))")"
+            PATCH_TOOL_KPIMG_URL="$(printf '%s' "$PATCH_TOOL_RELEASE_JSON" | python3 -c "import json,sys; data=json.load(sys.stdin); print(next(asset['browser_download_url'] for asset in data['assets'] if asset['name'] == 'kpimg-linux'))")"
+            curl -LSs "$PATCH_TOOL_KPTOOLS_URL" -o ./kptools-linux
+            curl -LSs "$PATCH_TOOL_KPIMG_URL" -o ./kpimg-linux
+            chmod +x ./kptools-linux ./kpimg-linux
+            ./kptools-linux -p -i ./Image -k ./kpimg-linux -o ./oImage
+          fi
           rm -f Image
           mv oImage Image
 
