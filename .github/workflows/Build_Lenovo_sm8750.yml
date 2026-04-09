@@ -16,6 +16,11 @@ on:
           - 'ReSukiSU'
         default: 'KernelSU'
 
+      ksu_ref:
+        description: "Branch or tag for selected root solution (blank = Action-Build default)"
+        required: false
+        default: ''
+
       manager_type:
         description: "📱Select the manager APK type:"
         required: true
@@ -103,6 +108,11 @@ on:
         required: false
         default: true
         type: boolean
+      enable_susfs_dev:
+        description: "Add SUSFS-dev"
+        required: false
+        default: false
+        type: boolean
 
 
 
@@ -113,6 +123,7 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       KSU_TYPE: ${{ github.event.inputs.ksu_type }}
+      KSU_REF_INPUT: ${{ github.event.inputs.ksu_ref }}
       MANAGER_TYPE: ${{ github.event.inputs.manager_type }}
       KERNEL_VERSION: ${{ github.event.inputs.kernel_version }}
       CUSTOM_KERNEL_SUFFIX: ${{ github.event.inputs.custom_kernel_suffix }}
@@ -130,6 +141,7 @@ jobs:
       ENABLE_UNICODE_BYPASS: ${{ github.event.inputs.enable_unicode_bypass }}
       ENABLE_SUSFS: ${{ github.event.inputs.enable_susfs }}
       ENABLE_SIGNED: ${{ github.event.inputs.enable_signed }}
+      ENABLE_SUSFS_DEV: ${{ github.event.inputs.enable_susfs_dev }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -520,71 +532,179 @@ jobs:
         run: |
             cd kernel_workspace
             echo "Configuring ${{ env.KSU_TYPE }}..."
+            KSU_CUSTOM_REF="${{ env.KSU_REF_INPUT }}"
+            SUSFS_ENABLED=false
+            if [ "${{ env.ENABLE_SUSFS }}" = "true" ] || [ "${{ env.ENABLE_SUSFS_DEV }}" = "true" ]; then
+              SUSFS_ENABLED=true
+            fi
+            get_latest_tag() {
+              local repo="$1"
+              curl -fsSL \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer ${{ github.token }}" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "https://api.github.com/repos/${repo}/tags?per_page=1" | \
+                python3 -c "import json,sys; data=json.load(sys.stdin); print(data[0]['name'] if data else '')"
+            }
+            get_latest_release_tag() {
+              local repo="$1"
+              curl -fsSL \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer ${{ github.token }}" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "https://api.github.com/repos/${repo}/releases/latest" | \
+                python3 -c "import json,sys; data=json.load(sys.stdin); print(data.get('tag_name', '').lstrip('v'))"
+            }
+            get_commit_count() {
+              local repo="$1"
+              local ref="$2"
+              local fallback="$3"
+              local headers count
+              headers="$(curl -fsSL -D - -o /dev/null \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer ${{ github.token }}" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "https://api.github.com/repos/${repo}/commits?sha=${ref}&per_page=1" || true)"
+              count="$(printf '%s' "$headers" | tr -d '\r' | sed -n 's/.*[?&]page=\([0-9][0-9]*\)>; rel="last".*/\1/p' | tail -n1)"
+              if [ -z "$count" ]; then
+                if printf '%s' "$headers" | tr -d '\r' | grep -qi '^link:'; then
+                  count="$fallback"
+                else
+                  count="1"
+                fi
+              fi
+              printf '%s' "$count"
+            }
             case "${{ env.KSU_TYPE }}" in
               "KernelSU")
-                curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+                KSU_SETUP_REPO="tiann/KernelSU"
+                KSU_SETUP_REF="${KSU_CUSTOM_REF:-main}"
+                curl -LSs "https://raw.githubusercontent.com/${KSU_SETUP_REPO}/${KSU_SETUP_REF}/kernel/setup.sh" | bash -s "$KSU_SETUP_REF"
                 cd ./KernelSU
                 GIT_COMMIT_HASH=$(git rev-parse --short=8 HEAD)
-                KSU_VERSION=$(git rev-list --count HEAD 2>/dev/null || echo 114514)
+                LOCAL_KSU_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo 1)
+                BASE_KSU_COUNT="$(get_commit_count "$KSU_SETUP_REPO" "$KSU_SETUP_REF" "$LOCAL_KSU_COUNT")"
+                KSU_VERSION=$(expr "$BASE_KSU_COUNT" + 30000)
+                if [ -f kernel/Kbuild ] && grep -q 'DKSU_VERSION=' kernel/Kbuild; then
+                  sed -i -E "s/DKSU_VERSION=[0-9]+/DKSU_VERSION=${KSU_VERSION}/" kernel/Kbuild
+                fi
                 echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-                echo "KSU_REPO=tiann/KernelSU" >> $GITHUB_ENV
+                echo "KSU_REPO=${KSU_SETUP_REPO}" >> $GITHUB_ENV
+                echo "KSU_MANAGER_REPO=${KSU_SETUP_REPO}" >> $GITHUB_ENV
+                echo "KSU_MANAGER_REF=main" >> $GITHUB_ENV
                 echo "KSU_COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
                 echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
                 echo "KernelSU commit hash: $GIT_COMMIT_HASH"
                 ;;
               "KernelSU Next")
-                curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/stable/kernel/setup.sh" | bash -s stable
+                KSU_SETUP_REPO="KernelSU-Next/KernelSU-Next"
+                KSU_MANAGER_REPO="${KSU_SETUP_REPO}"
+                if [ "$SUSFS_ENABLED" = "true" ]; then
+                  KSU_SETUP_REPO="pershoot/KernelSU-Next"
+                  KSU_SETUP_SCRIPT_REF="dev"
+                  KSU_SETUP_ARG="dev-susfs"
+                  KSU_MANAGER_REPO="KernelSU-Next/KernelSU-Next"
+                  KSU_MANAGER_REF="dev"
+                  KSU_MANAGER_COMMIT_SHA="$(git ls-remote "https://github.com/${KSU_MANAGER_REPO}.git" "refs/heads/${KSU_MANAGER_REF}" | awk '{print $1}')"
+                  if [ -z "$KSU_MANAGER_COMMIT_SHA" ]; then
+                    echo "::error::Failed to resolve ${KSU_MANAGER_REPO} ${KSU_MANAGER_REF} head commit"
+                    exit 1
+                  fi
+                else
+                  KSU_SETUP_SCRIPT_REF="${KSU_CUSTOM_REF:-dev}"
+                  KSU_SETUP_ARG="${KSU_SETUP_SCRIPT_REF}"
+                  KSU_MANAGER_REPO="${KSU_SETUP_REPO}"
+                  KSU_MANAGER_REF="dev"
+                fi
+                curl -LSs "https://raw.githubusercontent.com/${KSU_SETUP_REPO}/${KSU_SETUP_SCRIPT_REF}/kernel/setup.sh" | bash -s "$KSU_SETUP_ARG"
                 cd ./KernelSU-Next
                 GIT_COMMIT_HASH=$(git rev-parse --short=8 HEAD)
-                KSU_VERSION=$(git rev-list --count HEAD 2>/dev/null || echo 114514)
+                LOCAL_KSU_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo 1)
+                BASE_KSU_COUNT="$(get_commit_count "$KSU_SETUP_REPO" "$KSU_SETUP_SCRIPT_REF" "$LOCAL_KSU_COUNT")"
+                KSU_VERSION=$(expr "$BASE_KSU_COUNT" + 30000)
+                if [ -f kernel/Kbuild ]; then
+                  if grep -q '^KSU_VERSION_FALLBACK := ' kernel/Kbuild; then
+                    sed -i -E "s/^KSU_VERSION_FALLBACK := .*/KSU_VERSION_FALLBACK := ${KSU_VERSION}/" kernel/Kbuild
+                  fi
+                  KSU_GIT_TAG="$(get_latest_tag "KernelSU-Next/KernelSU-Next")"
+                  if [ -n "$KSU_GIT_TAG" ] && grep -q '^KSU_VERSION_TAG_FALLBACK := ' kernel/Kbuild; then
+                    sed -i -E "s/^KSU_VERSION_TAG_FALLBACK := .*/KSU_VERSION_TAG_FALLBACK := ${KSU_GIT_TAG}/" kernel/Kbuild
+                  fi
+                fi
                 echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-                echo "KSU_REPO=KernelSU-Next/KernelSU-Next" >> $GITHUB_ENV
-                echo "KSU_COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
+                echo "KSU_REPO=${KSU_SETUP_REPO}" >> $GITHUB_ENV
+                echo "KSU_MANAGER_REPO=${KSU_MANAGER_REPO}" >> $GITHUB_ENV
+                echo "KSU_MANAGER_REF=${KSU_MANAGER_REF}" >> $GITHUB_ENV
+                if [ -n "${KSU_MANAGER_COMMIT_SHA:-}" ]; then
+                  echo "KSU_COMMIT_SHA=${KSU_MANAGER_COMMIT_SHA}" >> $GITHUB_ENV
+                else
+                  echo "KSU_COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
+                fi
                 echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
                 echo "KernelSU-Next commit hash: $GIT_COMMIT_HASH"
                 ;;
               "ReSukiSU")
-                curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s main
+                KSU_SETUP_REPO="ReSukiSU/ReSukiSU"
+                KSU_SETUP_REF="${KSU_CUSTOM_REF:-main}"
+                curl -LSs "https://raw.githubusercontent.com/${KSU_SETUP_REPO}/${KSU_SETUP_REF}/kernel/setup.sh" | bash -s "$KSU_SETUP_REF"
                 cd ./KernelSU
-                KSU_VERSION=$(expr $(git rev-list --count main) + 30700 2>/dev/null || echo 114514)
+                LOCAL_KSU_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo 13000)
+                BASE_KSU_COUNT="$(get_commit_count "$KSU_SETUP_REPO" "$KSU_SETUP_REF" "$LOCAL_KSU_COUNT")"
+                KSU_VERSION=$(expr "$BASE_KSU_COUNT" + 30700)
                 echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
-                echo "KSU_REPO=ReSukiSU/ReSukiSU" >> $GITHUB_ENV
+                echo "KSU_REPO=${KSU_SETUP_REPO}" >> $GITHUB_ENV
+                echo "KSU_MANAGER_REPO=${KSU_SETUP_REPO}" >> $GITHUB_ENV
+                echo "KSU_MANAGER_REF=main" >> $GITHUB_ENV
                 echo "KSU_COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
                 echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
                 ;;
               *)
-                curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/refs/heads/main/kernel/setup.sh" | bash -s main
+                KSU_SETUP_REPO="SukiSU-Ultra/SukiSU-Ultra"
+                KSU_SETUP_REF="${KSU_CUSTOM_REF:-main}"
+                curl -LSs "https://raw.githubusercontent.com/${KSU_SETUP_REPO}/${KSU_SETUP_REF}/kernel/setup.sh" | bash -s "$KSU_SETUP_REF"
                 cd ./KernelSU
-                GIT_COMMIT_HASH=$(git rev-parse --short=8 HEAD)
+                GIT_COMMIT_HASH=$(git rev-parse --short HEAD)
                 echo "Current commit hash: $GIT_COMMIT_HASH"
-                export KSU_VERSION=$KSU_VERSION
-                for i in {1..3}; do
-                  KSU_API_VERSION=$(curl -s "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/Makefile" |
-                    grep -m1 "KSU_VERSION_API :=" |
-                    awk -F'= ' '{print $2}' |
-                    tr -d '[:space:]')
-                  [ -n "$KSU_API_VERSION" ] && break || sleep 1
-                done
-                [ -z "$KSU_API_VERSION" ] && KSU_API_VERSION="4.1.0"
-                echo "KSU_API_VERSION=$KSU_API_VERSION" >> $GITHUB_ENV
-                echo "KSU_REPO=SukiSU-Ultra/SukiSU-Ultra" >> $GITHUB_ENV
+                KSU_VERSION_TAG="$(get_latest_release_tag "$KSU_SETUP_REPO")"
+                if [[ -z "$KSU_VERSION_TAG" || "$(printf '%s\n' "$KSU_VERSION_TAG" "3.1.7" | sort -V | head -n1)" != "3.1.7" ]]; then
+                  KSU_VERSION_TAG="3.1.7"
+                fi
+                echo "KSU_VERSION_TAG=$KSU_VERSION_TAG" >> $GITHUB_ENV
+                echo "KSU_REPO=${KSU_SETUP_REPO}" >> $GITHUB_ENV
+                echo "KSU_MANAGER_REPO=${KSU_SETUP_REPO}" >> $GITHUB_ENV
+                echo "KSU_MANAGER_REF=main" >> $GITHUB_ENV
                 echo "KSU_COMMIT_SHA=$(git rev-parse HEAD)" >> $GITHUB_ENV
-                VERSION_DEFINITIONS=$'define get_ksu_version_full\nv\\$1-'"$GIT_COMMIT_HASH"$'\nendef\n\nKSU_VERSION_API := '"$KSU_API_VERSION"$'\nKSU_VERSION_FULL := v'"$KSU_API_VERSION"$'-'"$GIT_COMMIT_HASH"
+                VERSION_FULL="v${KSU_VERSION_TAG}-${GIT_COMMIT_HASH}@${KSU_SETUP_REF}"
+                ESC_VERSION_FULL=$(printf '%s' "$VERSION_FULL" | sed 's/[&|\\/]/\\&/g')
+                ESC_KSU_VERSION_TAG=$(printf '%s' "$KSU_VERSION_TAG" | sed 's/[&|\\/]/\\&/g')
 
-                sed -i '/define get_ksu_version_full/,/endef/d' kernel/Makefile
-                sed -i '/KSU_VERSION_API :=/d' kernel/Makefile
-                sed -i '/KSU_VERSION_FULL :=/d' kernel/Makefile
-                awk -v def="$VERSION_DEFINITIONS" '
-                  /REPO_OWNER :=/ {print; print def; inserted=1; next}
-                  1
-                  END {if (!inserted) print def}
-                ' kernel/Makefile > kernel/Makefile.tmp && mv kernel/Makefile.tmp kernel/Makefile
-                KSU_VERSION=$(expr $(git rev-list --count HEAD) + 37185 2>/dev/null || echo 114514)
+                if grep -q '^KSU_VERSION_FULL := ' kernel/Makefile; then
+                  sed -i "s|^KSU_VERSION_FULL := .*|KSU_VERSION_FULL := $ESC_VERSION_FULL|" kernel/Makefile
+                else
+                  awk -v full="$VERSION_FULL" '
+                    /^REPO_OWNER :=/ && !done {
+                      print
+                      print ""
+                      print "KSU_VERSION_FULL := " full
+                      done=1
+                      next
+                    }
+                    { print }
+                  ' kernel/Makefile > kernel/Makefile.tmp && mv kernel/Makefile.tmp kernel/Makefile
+                fi
+
+                if grep -q '^KSU_VERSION_API := ' kernel/Makefile; then
+                  sed -i "s|^KSU_VERSION_API := .*|KSU_VERSION_API := $ESC_KSU_VERSION_TAG|" kernel/Makefile
+                fi
+
+                LOCAL_KSU_COUNT=$(git rev-list --count HEAD 2>/dev/null || echo 13000)
+                BASE_KSU_COUNT="$(get_commit_count "$KSU_SETUP_REPO" "$KSU_SETUP_REF" "$LOCAL_KSU_COUNT")"
+                KSU_VERSION=$(expr "$BASE_KSU_COUNT" + 37185)
                 echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
                 echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
-                grep -A10 "REPO_OWNER" kernel/Makefile
-                grep "KSU_VERSION_FULL" kernel/Makefile
-                echo "SukiSU version: v${KSU_API_VERSION}-${GIT_COMMIT_HASH}"
+                grep -A10 "REPO_OWNER" kernel/Makefile || true
+                grep "KSU_VERSION_FULL" kernel/Makefile || true
+                echo "SukiSU version: ${VERSION_FULL}"
                 ;;
             esac
 
@@ -592,13 +712,22 @@ jobs:
         if: ${{ env.KSU_TYPE == 'KernelSU Next' }}
         run: |
           cd kernel_workspace/common/drivers/kernelsu
-          if [ ! -f kernel/apk_sign.c ]; then
+          if [ -f kernel/apk_sign.c ]; then
+            PATCH_TARGET="apk_sign.patch"
+          elif [ -f kernel/manager/apk_sign.c ]; then
+            PATCH_TARGET="apk_sign-retargeted.patch"
+          else
             echo "::warning::kernel/apk_sign.c not found. Skipping apk_sign patch."
             exit 0
           fi
           wget https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8750/main/other_patch/apk_sign.patch -O apk_sign.patch
-          patch -p2 -N -F 3 < apk_sign.patch || true
-          rm -f apk_sign.patch
+          if [ "$PATCH_TARGET" = "apk_sign-retargeted.patch" ]; then
+            sed -e 's|a/kernel/apk_sign.c|a/kernel/manager/apk_sign.c|' \
+                -e 's|b/kernel/apk_sign.c|b/kernel/manager/apk_sign.c|' \
+                apk_sign.patch > "$PATCH_TARGET"
+          fi
+          patch -p2 -N -F 3 < "$PATCH_TARGET" || true
+          rm -f apk_sign.patch apk_sign-retargeted.patch
 
       - name: 🔧 Resolve manager APK source
         id: manager
@@ -613,7 +742,8 @@ jobs:
           case "${{ env.KSU_TYPE }}" in
             "SukiSU")
               MODE="workflow"
-              REPO="${{ env.KSU_REPO }}"
+              REPO="${{ env.KSU_MANAGER_REPO }}"
+              REF="${{ env.KSU_MANAGER_REF }}"
               if [ "$WANT_SPOOF" = "true" ]; then
                 ARTIFACT="Spoofed-Manager"
               else
@@ -622,7 +752,8 @@ jobs:
               ;;
             "ReSukiSU")
               MODE="workflow"
-              REPO="${{ env.KSU_REPO }}"
+              REPO="${{ env.KSU_MANAGER_REPO }}"
+              REF="${{ env.KSU_MANAGER_REF }}"
               if [ "$WANT_SPOOF" = "true" ]; then
                 ARTIFACT="Spoofed-Manager-release"
               else
@@ -631,7 +762,8 @@ jobs:
               ;;
             "KernelSU Next")
               MODE="workflow"
-              REPO="${{ env.KSU_REPO }}"
+              REPO="${{ env.KSU_MANAGER_REPO }}"
+              REF="${{ env.KSU_MANAGER_REF }}"
               if [ "$WANT_SPOOF" = "true" ]; then
                 ARTIFACT="manager-spoofed"
               else
@@ -640,7 +772,8 @@ jobs:
               ;;
             *)
               MODE="workflow"
-              REPO="${{ env.KSU_REPO }}"
+              REPO="${{ env.KSU_MANAGER_REPO }}"
+              REF="${{ env.KSU_MANAGER_REF }}"
               ARTIFACT="manager"
               WANT_SPOOF=false
               ;;
@@ -648,30 +781,56 @@ jobs:
 
           echo "mode=$MODE" >> "$GITHUB_OUTPUT"
           echo "repo=$REPO" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
           echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
           echo "want_spoof=$WANT_SPOOF" >> "$GITHUB_OUTPUT"
           echo "commit_sha=${{ env.KSU_COMMIT_SHA }}" >> "$GITHUB_OUTPUT"
-          echo "Resolved manager source: mode=$MODE repo=$REPO artifact=$ARTIFACT commit=${{ env.KSU_COMMIT_SHA }} spoof=$WANT_SPOOF"
+          echo "Resolved manager source: mode=$MODE repo=$REPO ref=$REF artifact=$ARTIFACT commit=${{ env.KSU_COMMIT_SHA }} spoof=$WANT_SPOOF"
 
       - name: 🔧 Set up SUSFS
-        if: ${{ env.ENABLE_SUSFS == 'true' }}
+        if: ${{ env.ENABLE_SUSFS == 'true' || env.ENABLE_SUSFS_DEV == 'true' }}
         run: |
           cd kernel_workspace
-          git clone --depth=1 https://github.com/cctv18/susfs4oki.git susfs4ksu -b oki-android15-6.6
-          wget https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8750/main/other_patch/69_hide_stuff.patch -O ./common/69_hide_stuff.patch
-          cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch ./common/
-          cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
-          cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-          cd ./common
+          SUSFS_BRANCH="gki-android15-6.6"
+          if [ "${{ env.ENABLE_SUSFS_DEV }}" = "true" ]; then
+            SUSFS_BRANCH="gki-android15-6.6-dev"
+          fi
+          git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git susfs4ksu -b "$SUSFS_BRANCH"
+          SUSFS_DIR="${PWD}/susfs4ksu"
+          cp "${SUSFS_DIR}/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch" ./common/
+          cp "${SUSFS_DIR}/kernel_patches/fs/"* ./common/fs/
+          cp "${SUSFS_DIR}/kernel_patches/include/linux/"* ./common/include/linux/
+          if [ "${{ env.KSU_TYPE }}" = "KernelSU" ]; then
+            cp "${SUSFS_DIR}/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch" ./KernelSU/
+            cd ./KernelSU
+            sed -i 's|kernel/Makefile|kernel/Kbuild|g' ./10_enable_susfs_for_ksu.patch
+            sed -i 's|^@@ .* format:.*|@@ -94,4 +94,13 @@|' ./10_enable_susfs_for_ksu.patch
+            sed -i 's|.*check-format:.*| ccflags-y += -Wno-strict-prototypes -Wno-int-conversion -Wno-gcc-compat -Wno-missing-prototypes|' ./10_enable_susfs_for_ksu.patch
+            sed -i 's|.*clang-format --dry-run.*| ccflags-y += -Wno-declaration-after-statement -Wno-unused-function -Wno-unused-variable|' ./10_enable_susfs_for_ksu.patch
+            patch -p1 < 10_enable_susfs_for_ksu.patch || true
+            cd ../common
+          else
+            cd ./common
+          fi
+          GKI_V="android15-6.6"
+          fake_patched=0
+          if [ "$GKI_V" = "android15-6.6" ]; then
+            if ! grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
+              echo "Missing nr_subpages. Applying temporary SUSFS compatibility fix."
+              sed -i -e '/int ret = 0, copied = 0;/a \\tunsigned int nr_subpages \= __PAGE_SIZE \/ PAGE_SIZE;' -e '/int ret = 0, copied = 0;/a \\tpagemap_entry_t \*res = NULL;' ./fs/proc/task_mmu.c
+              fake_patched=1
+            fi
+            if ! grep -qxF '#include <linux/dma-buf.h>' ./fs/proc/base.c; then
+              echo "Missing <linux/dma-buf.h>. Adding temporary include for SUSFS patch."
+              sed -i '/#include <linux\/cpufreq_times.h>/a #include <linux\/dma-buf.h>' ./fs/proc/base.c
+            fi
+          fi
           patch -p1 < 50_add_susfs_in_gki-android15-6.6.patch || true
-          patch -p1 -N -F 3 < 69_hide_stuff.patch || true
-          case "${{ env.KERNEL_VERSION }}" in
-            6.6.56)
-              echo "[INFO] Building kernel 6.6.56. Fixing the undeclared identifier 'vma' build error"
-              cd ./fs/proc
-              sed -i 's/vma = find_vma(mm, start_vaddr);/struct vm_area_struct *vma = find_vma(mm, start_vaddr);/' task_mmu.c
-              ;;
-          esac
+          if [ "$fake_patched" = 1 ] && [ "$GKI_V" = "android15-6.6" ]; then
+            if grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
+              sed -i -e '/unsigned int nr_subpages \= __PAGE_SIZE \/ PAGE_SIZE;/d' -e '/pagemap_entry_t \*res = NULL;/d' ./fs/proc/task_mmu.c
+            fi
+          fi
 
       - name: 🔧 Set gki_defconfig
         run: |
@@ -684,28 +843,19 @@ jobs:
             echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
           fi
 
-          if [ "${{ env.KSU_TYPE }}" == 'ReSukiSU' ]; then
-            echo 'CONFIG_KSU_FULL_NAME_FORMAT="%TAG_NAME%-%COMMIT_SHA%-Re"' >> ./common/arch/arm64/configs/gki_defconfig
-          fi
-
-          if [ "${{ env.ENABLE_SUSFS }}" == 'true' ];then
+          if [ "${{ env.ENABLE_SUSFS }}" = 'true' ] || [ "${{ env.ENABLE_SUSFS_DEV }}" = 'true' ]; then
             echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
+            echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
-            echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> ./common/arch/arm64/configs/gki_defconfig
           else
-            echo "SUSFS is not enabled. Skipping SUSFS configuration."
+            echo "CONFIG_KSU_SUSFS=n" >> ./common/arch/arm64/configs/gki_defconfig
           fi
 
           echo "CONFIG_TMPFS_XATTR=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -986,41 +1136,60 @@ jobs:
 
           BUNDLE_DIR="${GITHUB_WORKSPACE}/kernel_workspace/upload_bundle"
           REPO="${{ steps.manager.outputs.repo }}"
+          REF="${{ steps.manager.outputs.ref }}"
           MODE="${{ steps.manager.outputs.mode }}"
           ARTIFACT="${{ steps.manager.outputs.artifact }}"
           COMMIT_SHA="${{ steps.manager.outputs.commit_sha }}"
 
           if [ "$MODE" = "workflow" ]; then
-            RUNS_JSON="$(curl -fsSL \
-              -H "Accept: application/vnd.github+json" \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/${REPO}/actions/runs?head_sha=${COMMIT_SHA}&status=success&per_page=50")"
+            find_artifact_url() {
+              local runs_api="$1"
+              local runs_json artifacts_json artifact_url
+              local run_ids=()
 
-            mapfile -t RUN_IDS < <(printf '%s' "$RUNS_JSON" | python3 -c "import json,sys; data=json.load(sys.stdin); [print(run['id']) for run in data.get('workflow_runs', []) if 'manager' in (run.get('name','').lower())]")
-
-            if [ "${#RUN_IDS[@]}" -eq 0 ]; then
-              echo "::error::No successful manager workflow runs found for ${REPO} at commit ${COMMIT_SHA}"
-              exit 1
-            fi
-
-            ARTIFACT_URL=""
-            for RUN_ID in "${RUN_IDS[@]}"; do
-              ARTIFACTS_JSON="$(curl -fsSL \
+              runs_json="$(curl -fsSL \
                 -H "Accept: application/vnd.github+json" \
                 -H "Authorization: Bearer $GITHUB_TOKEN" \
                 -H "X-GitHub-Api-Version: 2022-11-28" \
-                "https://api.github.com/repos/${REPO}/actions/runs/${RUN_ID}/artifacts")"
+                "$runs_api")"
 
-              ARTIFACT_URL="$(printf '%s' "$ARTIFACTS_JSON" | TARGET_ARTIFACT="$ARTIFACT" python3 -c "import json,os,sys; data=json.load(sys.stdin); target=os.environ['TARGET_ARTIFACT']; print(next((artifact['archive_download_url'] for artifact in data.get('artifacts', []) if artifact.get('name') == target), ''))")"
-              if [ -n "$ARTIFACT_URL" ]; then
-                echo "Using artifact '$ARTIFACT' from run $RUN_ID"
-                break
+              mapfile -t run_ids < <(printf '%s' "$runs_json" | python3 -c "import json,sys; data=json.load(sys.stdin); [print(run['id']) for run in data.get('workflow_runs', []) if 'manager' in (run.get('name','').lower())]")
+
+              if [ "${#run_ids[@]}" -eq 0 ]; then
+                return 1
               fi
-            done
+
+              for run_id in "${run_ids[@]}"; do
+                artifacts_json="$(curl -fsSL \
+                  -H "Accept: application/vnd.github+json" \
+                  -H "Authorization: Bearer $GITHUB_TOKEN" \
+                  -H "X-GitHub-Api-Version: 2022-11-28" \
+                  "https://api.github.com/repos/${REPO}/actions/runs/${run_id}/artifacts")"
+
+                artifact_url="$(printf '%s' "$artifacts_json" | TARGET_ARTIFACT="$ARTIFACT" python3 -c "import json,os,sys; data=json.load(sys.stdin); target=os.environ['TARGET_ARTIFACT']; print(next((artifact['archive_download_url'] for artifact in data.get('artifacts', []) if artifact.get('name') == target), ''))")"
+                if [ -n "$artifact_url" ]; then
+                  echo "Using artifact '$ARTIFACT' from run $run_id" >&2
+                  printf '%s' "$artifact_url"
+                  return 0
+                fi
+              done
+
+              return 2
+            }
+
+            ARTIFACT_URL=""
+
+            if [ -n "$COMMIT_SHA" ]; then
+              ARTIFACT_URL="$(find_artifact_url "https://api.github.com/repos/${REPO}/actions/runs?head_sha=${COMMIT_SHA}&status=success&per_page=50" || true)"
+            fi
+
+            if [ -z "$ARTIFACT_URL" ] && [ -n "$REF" ]; then
+              echo "::warning::Exact manager artifact not found for ${REPO} at commit ${COMMIT_SHA}. Falling back to latest successful '${REF}' branch run."
+              ARTIFACT_URL="$(find_artifact_url "https://api.github.com/repos/${REPO}/actions/runs?branch=${REF}&status=success&per_page=50" || true)"
+            fi
 
             if [ -z "$ARTIFACT_URL" ]; then
-              echo "::error::Artifact '${ARTIFACT}' not found in successful manager workflow runs for ${REPO} at commit ${COMMIT_SHA}"
+              echo "::error::Artifact '${ARTIFACT}' not found in successful manager workflow runs for ${REPO} (commit='${COMMIT_SHA}' ref='${REF}')"
               exit 1
             fi
 
