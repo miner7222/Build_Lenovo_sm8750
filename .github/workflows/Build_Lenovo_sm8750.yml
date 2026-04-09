@@ -86,6 +86,7 @@ jobs:
       STOCK_BUILD_USER: kleaf
       STOCK_BUILD_HOST: build-host
       STOCK_COMPILER_INFO: Android (11368308, +pgo, +bolt, +lto, +mlgo, based on r510928) clang version 18.0.0
+      TOOLCHAIN_CACHE_ROOT: .toolchain-cache
       ENABLE_REKERNEL: ${{ github.event.inputs.enable_ReKernel }}
       ENABLE_ADIOS: ${{ github.event.inputs.enable_Adios }}
       ENABLE_BBG: ${{ github.event.inputs.enable_bbg }}
@@ -160,10 +161,20 @@ jobs:
             echo "KERNEL_TIME=${{ env.CUSTOM_KERNEL_TIME }}" >> $GITHUB_ENV
           fi
 
+      - name: 📥 Restore toolchain cache
+        id: toolchain-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ${{ env.TOOLCHAIN_CACHE_ROOT }}/clang18
+            ${{ env.TOOLCHAIN_CACHE_ROOT }}/build-tools
+          key: toolchain-clang-r510928-build-tools-r510928-v1
+
       - name: 🛠 Install dependencies, initialize repo, and sync
         run: |
           rm -rf kernel_workspace
           mkdir kernel_workspace
+          mkdir -p "${{ env.TOOLCHAIN_CACHE_ROOT }}"
           cd kernel_workspace
 
           sudo apt-mark hold firefox &&
@@ -184,18 +195,36 @@ jobs:
           rm -f common.tar.gz &
 
 
-          echo "Cloning llvm-clang18 toolchain..." &&
-          mkdir -p clang18 &&
-          aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/clang-r510928.zip -o clang.zip &&
-          unzip -q clang.zip -d clang18 &&
-          rm -rf clang.zip &
+          if [ -d "../${{ env.TOOLCHAIN_CACHE_ROOT }}/clang18/bin" ]; then
+            echo "Restoring cached llvm-clang18 toolchain..." &&
+            cp -a "../${{ env.TOOLCHAIN_CACHE_ROOT }}/clang18" ./clang18 &
+          else
+            echo "Cloning llvm-clang18 toolchain..." &&
+            mkdir -p clang18 &&
+            aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/clang-r510928.zip -o clang.zip &&
+            unzip -q clang.zip -d clang18 &&
+            rm -rf clang.zip &
+          fi
 
-          echo "Cloning build tools..." &&
-          aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/build-tools.zip -o build-tools.zip &&
-          unzip -q build-tools.zip &&
-          rm -rf build-tools.zip &
+          if [ -d "../${{ env.TOOLCHAIN_CACHE_ROOT }}/build-tools/bin" ]; then
+            echo "Restoring cached build tools..." &&
+            cp -a "../${{ env.TOOLCHAIN_CACHE_ROOT }}/build-tools" ./build-tools &
+          else
+            echo "Cloning build tools..." &&
+            aria2c -s16 -x16 -k1M https://github.com/cctv18/oneplus_sm8650_toolchain/releases/download/LLVM-Clang18-r510928/build-tools.zip -o build-tools.zip &&
+            unzip -q build-tools.zip &&
+            rm -rf build-tools.zip &
+          fi
 
           wait
+          if [ ! -d "../${{ env.TOOLCHAIN_CACHE_ROOT }}/clang18/bin" ] && [ -d "clang18/bin" ]; then
+            rm -rf "../${{ env.TOOLCHAIN_CACHE_ROOT }}/clang18"
+            cp -a clang18 "../${{ env.TOOLCHAIN_CACHE_ROOT }}/clang18"
+          fi
+          if [ ! -d "../${{ env.TOOLCHAIN_CACHE_ROOT }}/build-tools/bin" ] && [ -d "build-tools/bin" ]; then
+            rm -rf "../${{ env.TOOLCHAIN_CACHE_ROOT }}/build-tools"
+            cp -a build-tools "../${{ env.TOOLCHAIN_CACHE_ROOT }}/build-tools"
+          fi
           echo "All sources and the llvm-Clang18 toolchain have been initialized!"
           echo "Removing ABI protection files and the dirty suffix..."
           rm common/android/abi_gki_protected_exports_* || true
@@ -205,6 +234,15 @@ jobs:
               sed -i '$i res=$(echo "$res" | sed '\''s/-dirty//g'\'')' "$f"
             done
           # fi
+
+      - name: 📥 Save toolchain cache
+        if: ${{ steps.toolchain-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ env.TOOLCHAIN_CACHE_ROOT }}/clang18
+            ${{ env.TOOLCHAIN_CACHE_ROOT }}/build-tools
+          key: toolchain-clang-r510928-build-tools-r510928-v1
 
       - name: 🛠 Set ccache dir
         run: |
@@ -627,8 +665,8 @@ jobs:
           sudo rm -rf /usr/local/lib/android &
           sudo rm -rf /opt/ghc &
           sudo rm -rf /opt/hostedtoolcache/CodeQL &
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error gki_defconfig &&
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error Image
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" HOSTCC="ccache clang" HOSTCXX="ccache clang++" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error gki_defconfig &&
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" HOSTCC="ccache clang" HOSTCXX="ccache clang++" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error Image
 
           # Secondary time hijack verification after the build
           echo "--- Post-build environment time: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
