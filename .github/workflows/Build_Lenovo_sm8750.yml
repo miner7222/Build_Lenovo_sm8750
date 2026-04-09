@@ -65,6 +65,12 @@ on:
         default: false
         type: boolean
 
+      enable_unicode_bypass:
+        description: "Fix Unicode invisible-character bypass"
+        required: false
+        default: false
+        type: boolean
+
       enable_ReKernel:
         description: "Enable Re-Kernel support"
         required: false
@@ -111,6 +117,7 @@ jobs:
       ENABLE_BBG: ${{ github.event.inputs.enable_bbg }}
       ENABLE_NETFILTER: ${{ github.event.inputs.enable_netfilter }}
       ENABLE_BBR_ECN: ${{ github.event.inputs.enable_bbr_ecn }}
+      ENABLE_UNICODE_BYPASS: ${{ github.event.inputs.enable_unicode_bypass }}
       ENABLE_SUSFS: ${{ github.event.inputs.enable_susfs }}
       ENABLE_SIGNED: ${{ github.event.inputs.enable_signed }}
     steps:
@@ -684,6 +691,14 @@ jobs:
           wget https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8750/main/other_patch/config.patch -O config.patch
           patch -p1 -F 3 < config.patch || true
           rm -f config.patch
+
+      - name: 🔧 Apply Unicode Bypass patch
+        if: ${{ env.ENABLE_UNICODE_BYPASS == 'true' }}
+        run: |
+          cd kernel_workspace/common
+          wget https://raw.githubusercontent.com/Numbersf/Action-Build/SukiSU-Ultra/patches/unicode_bypass_fix_6.1%2B.patch -O unicode_bypass_fix_6.1+.patch
+          patch -p1 --forward < unicode_bypass_fix_6.1+.patch || true
+          rm -f unicode_bypass_fix_6.1+.patch
 
       - name: 🔧 Set kernel name
         run: |
