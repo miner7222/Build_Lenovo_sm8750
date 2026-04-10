@@ -88,18 +88,18 @@ on:
       enable_ReKernel:
         description: "Add Re-Kernel support"
         required: false
-        default: true
+        default: false
         type: boolean
 
       enable_Adios:
         description: "Add ADIOS I/O scheduler support"
-        required: true
+        required: false
         default: false
         type: boolean
 
       enable_susfs:
         description: "Add SUSFS support"
-        required: true
+        required: false
         default: false
         type: boolean
 
