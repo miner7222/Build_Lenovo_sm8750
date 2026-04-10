@@ -1121,6 +1121,17 @@ jobs:
           cd kernel_workspace/common/out/arch/arm64/boot
           cp ./Image "./kernel"
 
+      - name: 🏷️ Set kernel artifact name
+        run: |
+          AOSP_KERNEL_SERIES="$(printf '%s\n' "${{ env.COMMON_AOSP_TAG }}" | sed -E 's/^(android[0-9]+-[0-9]+\.[0-9]+).*/\1/')"
+          if [ -z "$AOSP_KERNEL_SERIES" ]; then
+            echo "::error::Failed to derive kernel series from COMMON_AOSP_TAG='${{ env.COMMON_AOSP_TAG }}'"
+            exit 1
+          fi
+          KERNEL_BUNDLE_NAME="${{ env.KSU_TYPE }}_kernel-${AOSP_KERNEL_SERIES}"
+          echo "KERNEL_BUNDLE_NAME=$KERNEL_BUNDLE_NAME" >> "$GITHUB_ENV"
+          echo "Kernel artifact name: $KERNEL_BUNDLE_NAME"
+
       - name: 📦 Prepare kernel bundle
         run: |
           BUNDLE_DIR="${GITHUB_WORKSPACE}/kernel_workspace/upload_bundle"
@@ -1212,7 +1223,7 @@ jobs:
       - name: 📤 Upload kernel bundle
         uses: actions/upload-artifact@v5
         with:
-         name: kernel_bundle
+         name: ${{ env.KERNEL_BUNDLE_NAME }}
          path: kernel_workspace/upload_bundle/*
 
       - name: 📦 Sign boot using AOSP test key
