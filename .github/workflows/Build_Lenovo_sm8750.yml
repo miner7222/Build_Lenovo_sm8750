@@ -254,10 +254,17 @@ jobs:
           echo "Cloning source repository..."
           COMMON_ARCHIVE_URL="https://android.googlesource.com/kernel/common/+archive/refs/tags/${{ env.COMMON_AOSP_TAG }}.tar.gz"
           echo "Source archive: $COMMON_ARCHIVE_URL"
-          aria2c -s16 -x16 -k1M "$COMMON_ARCHIVE_URL" -o common.tar.gz && \
-          mkdir -p common && \
-          tar -xzf common.tar.gz -C common && \
-          rm -f common.tar.gz &
+          (
+            for i in 1 2 3; do
+              if aria2c -s16 -x16 -k1M "$COMMON_ARCHIVE_URL" -o common.tar.gz; then
+                mkdir -p common && tar -xzf common.tar.gz -C common && rm -f common.tar.gz
+                break
+              else
+                echo "Download failed (attempt $i). Waiting 3 minutes..."
+                if [ $i -lt 3 ]; then sleep 180; else exit 1; fi
+              fi
+            done
+          ) &
 
 
           if [ -d "../${{ env.TOOLCHAIN_CACHE_ROOT }}/clang18/bin" ]; then
