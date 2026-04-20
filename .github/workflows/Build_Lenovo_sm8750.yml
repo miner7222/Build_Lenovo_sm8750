@@ -92,6 +92,12 @@ on:
         default: false
         type: boolean
 
+      enable_ntsync:
+        description: "Add NTSync support"
+        required: false
+        default: false
+        type: boolean
+
       enable_ReKernel:
         description: "Add Re-Kernel support"
         required: false
@@ -142,6 +148,7 @@ jobs:
       TOOLCHAIN_CACHE_ROOT: .toolchain-cache
       ENABLE_REKERNEL: ${{ github.event.inputs.enable_ReKernel }}
       ENABLE_DROID_SPACES: ${{ github.event.inputs.enable_droid_spaces }}
+      ENABLE_NTSYNC: ${{ github.event.inputs.enable_ntsync }}
       ENABLE_ADIOS: ${{ github.event.inputs.enable_Adios }}
       ENABLE_BBG: ${{ github.event.inputs.enable_bbg }}
       ENABLE_NETFILTER: ${{ github.event.inputs.enable_netfilter }}
@@ -501,6 +508,18 @@ jobs:
           echo "CONFIG_NETFILTER_XT_TARGET_REJECT=y" >> arch/arm64/configs/gki_defconfig
           echo "CONFIG_NETFILTER_XT_TARGET_LOG=y" >> arch/arm64/configs/gki_defconfig
           echo "CONFIG_NETFILTER_XT_MATCH_RECENT=y" >> arch/arm64/configs/gki_defconfig
+
+      - name: 🔧 Add NTSync support
+        if: ${{ env.ENABLE_NTSYNC == 'true' }}
+        run: |
+          echo "🔧 Enabling NTSync support..."
+          cd kernel_workspace/common
+          wget https://raw.githubusercontent.com/TheWildJames/kernel_patches/main/common/ntsync/ntsync_compat_android15-6.6.patch -O ntsync_compat.patch
+          wget https://raw.githubusercontent.com/TheWildJames/kernel_patches/main/common/ntsync/ntsync_base.patch -O ntsync_base.patch
+          patch -p1 --forward < ntsync_compat.patch || true
+          patch -p1 --forward < ntsync_base.patch || true
+          echo "CONFIG_NTSYNC=y" >> arch/arm64/configs/gki_defconfig
+          rm -f ntsync_compat.patch ntsync_base.patch
 
       - name: 🔧 Add Re-Kernel support
         if: ${{ env.ENABLE_REKERNEL == 'true' }}
