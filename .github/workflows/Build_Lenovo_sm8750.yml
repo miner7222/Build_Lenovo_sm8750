@@ -325,6 +325,7 @@ jobs:
           ROOT_SOLUTION_KEY="${{ env.KSU_TYPE }}"
           ROOT_SOLUTION_KEY="${ROOT_SOLUTION_KEY//\//-}"
           echo "ROOT_SOLUTION_KEY=$ROOT_SOLUTION_KEY" >> $GITHUB_ENV
+          echo "CCACHE_KEY=ccache-ecsv1-${ROOT_SOLUTION_KEY}-${{ env.KERNEL_VERSION }}" >> $GITHUB_ENV
           echo "CCACHE_DIR=$HOME/.ccache_${ROOT_SOLUTION_KEY}_${{ env.KERNEL_VERSION }}" >> $GITHUB_ENV
           echo "CCACHE_MAXSIZE=10G" >> $GITHUB_ENV
           echo "Current disk space:"
@@ -355,9 +356,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ env.ROOT_SOLUTION_KEY }}-${{ env.KERNEL_VERSION }}-latest
+          key: ${{ env.CCACHE_KEY }}-latest
           restore-keys: |
-            ccache-${{ env.ROOT_SOLUTION_KEY }}-${{ env.KERNEL_VERSION }}-
+            ${{ env.CCACHE_KEY }}-
 
       - name: 🔎 Find public ccache in releases
         id: public-ccache
@@ -1153,14 +1154,14 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ env.ROOT_SOLUTION_KEY }}-${{ env.KERNEL_VERSION }}-${{ github.run_id }}
+          key: ${{ env.CCACHE_KEY }}-${{ github.run_id }}
 
       - name: 🧹 Clean old ccache
         if: env.BUILD_TIME > 480
         uses: actions/github-script@v8
         env:
-          PREFIX: ccache-${{ env.ROOT_SOLUTION_KEY }}-${{ env.KERNEL_VERSION }}
-          CURRENT_KEY: ccache-${{ env.ROOT_SOLUTION_KEY }}-${{ env.KERNEL_VERSION }}-${{ github.run_id }}
+          PREFIX: ${{ env.CCACHE_KEY }}
+          CURRENT_KEY: ${{ env.CCACHE_KEY }}-${{ github.run_id }}
         with:
           script: |
             const { owner, repo } = context.repo;
