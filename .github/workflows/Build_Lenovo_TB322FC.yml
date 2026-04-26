@@ -1,0 +1,202 @@
+name: Build TB322FC Kernel
+run-name: ${{ inputs.releases }}
+
+permissions:
+  contents: read
+  actions: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      ksu_type:
+        description: "Root solution:"
+        required: true
+        type: choice
+        options:
+          - 'N/A'
+          - 'KernelSU'
+          - 'KernelSU-Next'
+          - 'SukiSU-Ultra'
+          - 'ReSukiSU'
+        default: 'KernelSU'
+
+      ksu_ref:
+        description: "Branch/tag"
+        required: false
+        default: ''
+
+      manager_type:
+        description: "Manager APK type:"
+        required: true
+        type: choice
+        options:
+          - 'Normal'
+          - 'Spoofed'
+        default: 'Normal'
+
+      releases:
+        description: "Release:"
+        required: true
+        type: choice
+        options:
+          - '1.1.10.043~1.1.11.120'
+          - '1.1.11.188~1.5.10.117'
+          - '1.5.10.096'
+          - '1.5.10.183'
+        default: '1.1.11.188~1.5.10.117'
+
+      custom_kernel_suffix:
+        description: "Kernel suffix"
+        required: false
+        default: ''
+
+      custom_kernel_time:
+        description: "Build timestamp"
+        required: false
+        default: ''
+
+      kernel_module_impl:
+        description: "Kernel module implementation"
+        required: true
+        type: choice
+        options:
+          - 'N/A'
+          - 'KPM'
+          - 'KPN'
+        default: 'N/A'
+
+      enable_bbg:
+        description: "Enable BBG baseband guard"
+        required: false
+        default: false
+        type: boolean
+
+      enable_netfilter:
+        description: "Enable Netfilter support"
+        required: false
+        default: false
+        type: boolean
+
+      enable_bbr_ecn:
+        description: "Enable BBR+ECN support"
+        required: false
+        default: false
+        type: boolean
+
+      enable_unicode_bypass:
+        description: "Fix Unicode invisible character bypass"
+        required: false
+        default: false
+        type: boolean
+
+      enable_droid_spaces:
+        description: "Add DroidSpaces support"
+        required: false
+        default: false
+        type: boolean
+
+      enable_ntsync:
+        description: "Add NTSync support"
+        required: false
+        default: false
+        type: boolean
+
+      enable_ReKernel:
+        description: "Add Re-Kernel support"
+        required: false
+        default: false
+        type: boolean
+
+      enable_Adios:
+        description: "Add ADIOS I/O scheduler support"
+        required: false
+        default: false
+        type: boolean
+
+      enable_susfs:
+        description: "Add SUSFS support"
+        required: false
+        default: false
+        type: boolean
+
+      enable_susfs_dev:
+        description: "Add SUSFS-dev support"
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  resolve_release:
+    name: Resolve TB322FC release
+    runs-on: ubuntu-latest
+    outputs:
+      kernel_version: ${{ steps.release.outputs.kernel_version }}
+      default_suffix: ${{ steps.release.outputs.default_suffix }}
+      default_kernel_time: ${{ steps.release.outputs.default_kernel_time }}
+    steps:
+      - name: Resolve release defaults
+        id: release
+        env:
+          KERNEL_RELEASE: ${{ inputs.releases }}
+        run: |
+          set -euo pipefail
+
+          case "$KERNEL_RELEASE" in
+            "1.1.10.043~1.1.11.120")
+              kernel_version='6.6.56'
+              default_suffix='-android15-8-g38447e018c92-ab12829524-4k'
+              default_kernel_time='Thu Dec 19 17:58:46 UTC 2024'
+              ;;
+            "1.1.11.188~1.5.10.117")
+              kernel_version='6.6.89'
+              default_suffix='-android15-8-g14220ae4ce65-ab13680582-4k'
+              default_kernel_time='Mon Jun 23 07:30:57 UTC 2025'
+              ;;
+            "1.5.10.096")
+              kernel_version='6.6.102'
+              default_suffix='-android15-8-g06bc416365ef-ab14559830-4k'
+              default_kernel_time='Tue Dec 9 15:43:22 UTC 2025'
+              ;;
+            "1.5.10.183")
+              kernel_version='6.6.118'
+              default_suffix='-android15-8-g350f378eb496-ab14943902-4k'
+              default_kernel_time='Thu Feb 26 02:40:50 UTC 2026'
+              ;;
+            *)
+              echo "::error::Unsupported TB322FC release: $KERNEL_RELEASE"
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "kernel_version=$kernel_version"
+            echo "default_suffix=$default_suffix"
+            echo "default_kernel_time=$default_kernel_time"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ inputs.releases }}
+    needs: resolve_release
+    uses: ./.github/workflows/Build_Lenovo_sm8750.yml
+    with:
+      ksu_type: ${{ inputs.ksu_type }}
+      ksu_ref: ${{ inputs.ksu_ref }}
+      manager_type: ${{ inputs.manager_type }}
+      build_target: Build_Lenovo_TB322FC
+      kernel_version: ${{ needs.resolve_release.outputs.kernel_version }}
+      default_suffix: ${{ needs.resolve_release.outputs.default_suffix }}
+      default_kernel_time: ${{ needs.resolve_release.outputs.default_kernel_time }}
+      custom_kernel_suffix: ${{ inputs.custom_kernel_suffix }}
+      custom_kernel_time: ${{ inputs.custom_kernel_time }}
+      kernel_module_impl: ${{ inputs.kernel_module_impl }}
+      enable_bbg: ${{ inputs.enable_bbg }}
+      enable_netfilter: ${{ inputs.enable_netfilter }}
+      enable_bbr_ecn: ${{ inputs.enable_bbr_ecn }}
+      enable_unicode_bypass: ${{ inputs.enable_unicode_bypass }}
+      enable_droid_spaces: ${{ inputs.enable_droid_spaces }}
+      enable_ntsync: ${{ inputs.enable_ntsync }}
+      enable_ReKernel: ${{ inputs.enable_ReKernel }}
+      enable_Adios: ${{ inputs.enable_Adios }}
+      enable_susfs: ${{ inputs.enable_susfs }}
+      enable_susfs_dev: ${{ inputs.enable_susfs_dev }}
+    secrets: inherit

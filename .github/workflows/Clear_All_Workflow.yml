@@ -7,8 +7,9 @@ on:
         type: choice
         description: 'Workflow name to clean'
         required: true
-        default: 'Build_Lenovo_sm8750'
+        default: 'Build_Lenovo_TB322FC'
         options:
+          - "Build_Lenovo_TB322FC"
           - "Build_Lenovo_sm8750"
       count:
         description: 'Maximum number of runs to delete'

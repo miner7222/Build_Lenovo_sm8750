@@ -1,232 +1,194 @@
-name: Build_Lenovo_sm8750
+name: Build GKI Kernel
 permissions:
   contents: read
   actions: write
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       ksu_type:
-        description: "Root solution:"
         required: true
-        type: choice
-        options:
-          - 'N/A'
-          - 'KernelSU'
-          - 'KernelSU-Next'
-          - 'SukiSU-Ultra'
-          - 'ReSukiSU'
-        default: 'KernelSU'
+        type: string
 
       ksu_ref:
-        description: "Branch/tag"
         required: false
+        type: string
         default: ''
 
       manager_type:
-        description: "Manager APK type:"
         required: true
-        type: choice
-        options:
-          - 'Normal'
-          - 'Spoofed'
-        default: 'Normal'
+        type: string
+
+      build_target:
+        required: true
+        type: string
 
       kernel_version:
-        description: "Kernel version:"
-        required: false
-        type: choice
-        options:
-          - '6.6.56'
-          - '6.6.89'
-          - '6.6.102'
-          - '6.6.118'
-        default: '6.6.89'
+        required: true
+        type: string
+
+      default_suffix:
+        required: true
+        type: string
+
+      default_kernel_time:
+        required: true
+        type: string
 
       custom_kernel_suffix:
-        description: "Kernel suffix"
         required: false
+        type: string
         default: ''
 
       custom_kernel_time:
-        description: "Build timestamp"
         required: false
+        type: string
         default: ''
 
       kernel_module_impl:
-        description: "Kernel module implementation"
         required: true
-        type: choice
-        options:
-          - 'N/A'
-          - 'KPM'
-          - 'KPN'
-        default: 'N/A'
+        type: string
 
       enable_bbg:
-        description: "Enable BBG baseband guard"
         required: false
-        default: false
         type: boolean
+        default: false
 
       enable_netfilter:
-        description: "Enable Netfilter support"
         required: false
-        default: false
         type: boolean
+        default: false
 
       enable_bbr_ecn:
-        description: "Enable BBR+ECN support"
         required: false
-        default: false
         type: boolean
+        default: false
 
       enable_unicode_bypass:
-        description: "Fix Unicode invisible character bypass"
         required: false
-        default: false
         type: boolean
+        default: false
 
       enable_droid_spaces:
-        description: "Add DroidSpaces support"
         required: false
-        default: false
         type: boolean
+        default: false
 
       enable_ntsync:
-        description: "Add NTSync support"
         required: false
-        default: false
         type: boolean
+        default: false
 
       enable_ReKernel:
-        description: "Add Re-Kernel support"
         required: false
-        default: false
         type: boolean
+        default: false
 
       enable_Adios:
-        description: "Add ADIOS I/O scheduler support"
         required: false
-        default: false
         type: boolean
+        default: false
 
       enable_susfs:
-        description: "Add SUSFS support"
         required: false
-        default: false
         type: boolean
+        default: false
 
-      # enable_signed:
-      #   description: "Sign boot with AOSP keys"
-      #   required: false
-      #   default: true
-      #   type: boolean
       enable_susfs_dev:
-        description: "Add SUSFS-dev support"
         required: false
-        default: false
         type: boolean
+        default: false
 
 
 
 jobs:
   build:
-    name: Build_${{ github.event.inputs.kernel_version }}
+    name: ${{ inputs.build_target }}_${{ inputs.kernel_version }}
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      KSU_TYPE: ${{ github.event.inputs.ksu_type }}
-      KSU_REF_INPUT: ${{ github.event.inputs.ksu_ref }}
-      MANAGER_TYPE: ${{ github.event.inputs.manager_type }}
-      KERNEL_VERSION: ${{ github.event.inputs.kernel_version }}
-      CUSTOM_KERNEL_SUFFIX: ${{ github.event.inputs.custom_kernel_suffix }}
-      CUSTOM_KERNEL_TIME: ${{ github.event.inputs.custom_kernel_time }}
-      KERNEL_MODULE_IMPL: ${{ github.event.inputs.kernel_module_impl }}
+      KSU_TYPE: ${{ inputs.ksu_type }}
+      KSU_REF_INPUT: ${{ inputs.ksu_ref }}
+      MANAGER_TYPE: ${{ inputs.manager_type }}
+      BUILD_TARGET: ${{ inputs.build_target }}
+      KERNEL_VERSION: ${{ inputs.kernel_version }}
+      DEFAULT_SUFFIX: ${{ inputs.default_suffix }}
+      DEFAULT_KERNEL_TIME: ${{ inputs.default_kernel_time }}
+      CUSTOM_KERNEL_SUFFIX: ${{ inputs.custom_kernel_suffix }}
+      CUSTOM_KERNEL_TIME: ${{ inputs.custom_kernel_time }}
+      KERNEL_MODULE_IMPL: ${{ inputs.kernel_module_impl }}
       STOCK_BUILD_USER: kleaf
       STOCK_BUILD_HOST: build-host
       STOCK_COMPILER_INFO: Android (11368308, +pgo, +bolt, +lto, +mlgo, based on r510928) clang version 18.0.0
       TOOLCHAIN_CACHE_ROOT: .toolchain-cache
-      ENABLE_REKERNEL: ${{ github.event.inputs.enable_ReKernel }}
-      ENABLE_DROID_SPACES: ${{ github.event.inputs.enable_droid_spaces }}
-      ENABLE_NTSYNC: ${{ github.event.inputs.enable_ntsync }}
-      ENABLE_ADIOS: ${{ github.event.inputs.enable_Adios }}
-      ENABLE_BBG: ${{ github.event.inputs.enable_bbg }}
-      ENABLE_NETFILTER: ${{ github.event.inputs.enable_netfilter }}
-      ENABLE_BBR_ECN: ${{ github.event.inputs.enable_bbr_ecn }}
-      ENABLE_UNICODE_BYPASS: ${{ github.event.inputs.enable_unicode_bypass }}
-      ENABLE_SUSFS: ${{ github.event.inputs.enable_susfs }}
-      # ENABLE_SIGNED: ${{ github.event.inputs.enable_signed }}
-      ENABLE_SUSFS_DEV: ${{ github.event.inputs.enable_susfs_dev }}
+      ENABLE_REKERNEL: ${{ inputs.enable_ReKernel }}
+      ENABLE_DROID_SPACES: ${{ inputs.enable_droid_spaces }}
+      ENABLE_NTSYNC: ${{ inputs.enable_ntsync }}
+      ENABLE_ADIOS: ${{ inputs.enable_Adios }}
+      ENABLE_BBG: ${{ inputs.enable_bbg }}
+      ENABLE_NETFILTER: ${{ inputs.enable_netfilter }}
+      ENABLE_BBR_ECN: ${{ inputs.enable_bbr_ecn }}
+      ENABLE_UNICODE_BYPASS: ${{ inputs.enable_unicode_bypass }}
+      ENABLE_SUSFS: ${{ inputs.enable_susfs }}
+      # ENABLE_SIGNED: ${{ inputs.enable_signed }}
+      ENABLE_SUSFS_DEV: ${{ inputs.enable_susfs_dev }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: ⚙️ Set Kernel version config
         run: |
-          echo "KERNEL_TIME=${{ env.CUSTOM_KERNEL_TIME }}" >> $GITHUB_ENV
-          case "${{ env.KERNEL_VERSION }}" in
+          if [ -z "$KERNEL_VERSION" ]; then
+            echo "::error::KERNEL_VERSION was not provided by the caller workflow"
+            exit 1
+          fi
+          if [ -z "$DEFAULT_SUFFIX" ]; then
+            echo "::error::DEFAULT_SUFFIX was not provided by the caller workflow"
+            exit 1
+          fi
+          if [ -z "$DEFAULT_KERNEL_TIME" ]; then
+            echo "::error::DEFAULT_KERNEL_TIME was not provided by the caller workflow"
+            exit 1
+          fi
+
+          echo "KERNEL_VERSION=$KERNEL_VERSION" >> $GITHUB_ENV
+
+          case "$KERNEL_VERSION" in
             "6.6.56")
               echo "os_patch_level=2024-11" >> $GITHUB_ENV
-              echo "releases=TB322FC_1.1.11.120" >> $GITHUB_ENV
               echo "COMMON_AOSP_TAG=android15-6.6-2024-11_r7" >> $GITHUB_ENV
               ;;
             "6.6.89")
               echo "os_patch_level=2025-06" >> $GITHUB_ENV
-              echo "releases=ColorOS_16_400_OPD_Boot" >> $GITHUB_ENV
               echo "COMMON_AOSP_TAG=android15-6.6-2025-06_r3" >> $GITHUB_ENV
               ;;
             "6.6.102")
               echo "os_patch_level=2025-10" >> $GITHUB_ENV
-              echo "releases=TB322FC_1.5.10.096" >> $GITHUB_ENV
               echo "COMMON_AOSP_TAG=android15-6.6-2025-10_r16" >> $GITHUB_ENV
               ;;
             "6.6.118")
               echo "os_patch_level=2026-01" >> $GITHUB_ENV
-              echo "releases=TB322FC_1.5.10.183" >> $GITHUB_ENV
               echo "COMMON_AOSP_TAG=android15-6.6-2026-01_r15" >> $GITHUB_ENV
               ;;
+            *)
+              echo "::error::Unsupported kernel version: $KERNEL_VERSION"
+              exit 1
+              ;;
           esac
-           if [ -z "${{ env.CUSTOM_KERNEL_SUFFIX }}" ]; then
-            case "${{ env.KERNEL_VERSION }}" in
-              "6.6.56")
-                DEFAULT_SUFFIX='-android15-8-g38447e018c92-ab12829524-4k'
-                ;;
-              "6.6.89")
-                DEFAULT_SUFFIX='-android15-8-g14220ae4ce65-ab13680582-4k'
-                ;;
-              "6.6.102")
-                DEFAULT_SUFFIX='-android15-8-g06bc416365ef-ab14559830-4k'
-                ;;
-              "6.6.118")
-                DEFAULT_SUFFIX='-android15-8-g350f378eb496-ab14943902-4k'
-                ;;
-            esac
+
+          if [ -z "$CUSTOM_KERNEL_SUFFIX" ]; then
             echo "DEFAULT_SUFFIX=$DEFAULT_SUFFIX" >> $GITHUB_ENV
             echo "Using stock kernel name: $DEFAULT_SUFFIX"
           else
-            echo "Using custom name: ${{ env.CUSTOM_KERNEL_SUFFIX }}"
-            echo "DEFAULT_SUFFIX=${{ env.CUSTOM_KERNEL_SUFFIX }}" >> $GITHUB_ENV
+            echo "Using custom name: $CUSTOM_KERNEL_SUFFIX"
+            echo "DEFAULT_SUFFIX=$CUSTOM_KERNEL_SUFFIX" >> $GITHUB_ENV
           fi
-          if [ -z "${{ env.CUSTOM_KERNEL_TIME }}" ]; then
-            case "${{ env.KERNEL_VERSION }}" in
-              6.6.56)
-                KERNEL_TIME='Thu Dec 19 17:58:46 UTC 2024'
-                ;;
-              6.6.89)
-                KERNEL_TIME='Mon Jun 23 07:30:57 UTC 2025'
-                ;;
-              6.6.102)
-                KERNEL_TIME='Tue Dec 9 15:43:22 UTC 2025'
-                ;;
-              6.6.118)
-                KERNEL_TIME='Thu Feb 26 02:40:50 UTC 2026'
-                ;;
-            esac
+          if [ -z "$CUSTOM_KERNEL_TIME" ]; then
+            KERNEL_TIME="$DEFAULT_KERNEL_TIME"
             echo "KERNEL_TIME=$KERNEL_TIME" >> $GITHUB_ENV
             echo "Using stock kernel time: $KERNEL_TIME"
           else
-            echo "Using custom build time: ${{ env.CUSTOM_KERNEL_TIME }}"
-            echo "KERNEL_TIME=${{ env.CUSTOM_KERNEL_TIME }}" >> $GITHUB_ENV
+            echo "Using custom build time: $CUSTOM_KERNEL_TIME"
+            echo "KERNEL_TIME=$CUSTOM_KERNEL_TIME" >> $GITHUB_ENV
           fi
 
       - name: 📥 Restore toolchain cache
@@ -256,7 +218,7 @@ jobs:
           sudo chmod +x /usr/bin/ccache &&
           rm -f ./ccache &
           echo "Cloning source repository..."
-          COMMON_ARCHIVE_URL="https://android.googlesource.com/kernel/common/+archive/refs/tags/${{ env.COMMON_AOSP_TAG }}.tar.gz"
+          COMMON_ARCHIVE_URL="https://android.googlesource.com/kernel/common/+archive/refs/tags/${COMMON_AOSP_TAG}.tar.gz"
           echo "Source archive: $COMMON_ARCHIVE_URL"
           (
             for i in 1 2 3; do
@@ -325,12 +287,12 @@ jobs:
           ROOT_SOLUTION_KEY="${{ env.KSU_TYPE }}"
           ROOT_SOLUTION_KEY="${ROOT_SOLUTION_KEY//\//-}"
           echo "ROOT_SOLUTION_KEY=$ROOT_SOLUTION_KEY" >> $GITHUB_ENV
-          echo "CCACHE_KEY=ccache-ecsv2-${ROOT_SOLUTION_KEY}-${{ env.KERNEL_VERSION }}" >> $GITHUB_ENV
-          echo "CCACHE_DIR=$HOME/.ccache_${ROOT_SOLUTION_KEY}_${{ env.KERNEL_VERSION }}" >> $GITHUB_ENV
+          echo "CCACHE_KEY=ccache-ecsv2-${ROOT_SOLUTION_KEY}-${KERNEL_VERSION}" >> $GITHUB_ENV
+          echo "CCACHE_DIR=$HOME/.ccache_${ROOT_SOLUTION_KEY}_${KERNEL_VERSION}" >> $GITHUB_ENV
           echo "CCACHE_MAXSIZE=10G" >> $GITHUB_ENV
           echo "Current disk space:"
           df -h
-          echo "Kernel version being built: ${{ env.KERNEL_VERSION }}"
+          echo "Kernel version being built: $KERNEL_VERSION"
 
       - name: 🛠 Set build identity
         working-directory: kernel_workspace/common
@@ -367,7 +329,6 @@ jobs:
         env:
           PUBLIC_CACHE_REPO: ${{ vars.PUBLIC_CACHE_REPO }}
           PUBLIC_CACHE_TAG: ${{ vars.PUBLIC_CACHE_TAG }}
-          KERNEL_VERSION: ${{ env.KERNEL_VERSION }}
         with:
           script: |
             const repoName = process.env.PUBLIC_CACHE_REPO || 'showdo/Public_Ccache';
@@ -1256,10 +1217,10 @@ jobs:
 
       - name: 🏷️ Set kernel artifact name
         run: |
-          AOSP_KERNEL_SERIES="$(printf '%s\n' "${{ env.COMMON_AOSP_TAG }}" | sed -E 's/^(android[0-9]+-[0-9]+\.[0-9]+).*/\1/')"
+          AOSP_KERNEL_SERIES="$(printf '%s\n' "$COMMON_AOSP_TAG" | sed -E 's/^(android[0-9]+-[0-9]+\.[0-9]+).*/\1/')"
           ROOT_SOLUTION_NAME="${ROOT_SOLUTION_KEY:-${{ env.KSU_TYPE }}}"
           if [ -z "$AOSP_KERNEL_SERIES" ]; then
-            echo "::error::Failed to derive kernel series from COMMON_AOSP_TAG='${{ env.COMMON_AOSP_TAG }}'"
+            echo "::error::Failed to derive kernel series from COMMON_AOSP_TAG='$COMMON_AOSP_TAG'"
             exit 1
           fi
           KERNEL_BUNDLE_NAME="${ROOT_SOLUTION_NAME}_kernel-${AOSP_KERNEL_SERIES}"
@@ -1371,7 +1332,7 @@ jobs:
       #     rm -f boot_avb_tool.tar.gz && \
       #     cp ./common/out/arch/arm64/boot/Image ./boot_avb_tool/AOSP-Testkey-BootSigner-main/kernel
       #     cd boot_avb_tool/AOSP-Testkey-BootSigner-main && \
-      #     curl -L -o boot.img https://github.com/showdo/AOSP-Testkey-BootSigner/releases/download/${{ env.releases }}/boot.img
+      #     curl -L -o boot.img https://github.com/showdo/AOSP-Testkey-BootSigner/releases/download/<release-tag>/boot.img
       #     chmod +x ./tools/magiskboot
       #     ./tools/magiskboot repack boot.img
       #     rm -f ./boot.img kernel
