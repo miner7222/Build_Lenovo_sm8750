@@ -33,7 +33,7 @@ on:
 
       kernel_version:
         description: "Kernel version:"
-        required: true
+        required: false
         type: choice
         options:
           - '6.6.56'
