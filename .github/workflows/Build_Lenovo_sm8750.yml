@@ -132,7 +132,7 @@ jobs:
       # ENABLE_SIGNED: ${{ inputs.enable_signed }}
       ENABLE_SUSFS_DEV: ${{ inputs.enable_susfs_dev }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: ⚙️ Set Kernel version config
@@ -325,7 +325,7 @@ jobs:
       - name: 🔎 Find public ccache in releases
         id: public-ccache
         if: ${{ steps.ccache-restore.outputs.cache-matched-key == '' }}
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           PUBLIC_CACHE_REPO: ${{ vars.PUBLIC_CACHE_REPO }}
           PUBLIC_CACHE_TAG: ${{ vars.PUBLIC_CACHE_TAG }}
@@ -1130,7 +1130,7 @@ jobs:
 
       - name: 🧹 Clean old ccache
         if: env.BUILD_TIME > 480
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           PREFIX: ${{ env.CCACHE_KEY }}
           CURRENT_KEY: ${{ env.CCACHE_KEY }}-${{ github.run_id }}
@@ -1317,7 +1317,7 @@ jobs:
           find "$BUNDLE_DIR" -maxdepth 1 -type f -printf "%f\n"
 
       - name: 📤 Upload kernel bundle
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
          name: ${{ env.KERNEL_BUNDLE_NAME }}
          path: kernel_workspace/upload_bundle/*
@@ -1341,7 +1341,7 @@ jobs:
 
       # - name: 📤 Upload signed boot
       #   if: ${{ env.ENABLE_SIGNED == 'true' }}
-      #   uses: actions/upload-artifact@v5
+      #   uses: actions/upload-artifact@v7
       #   with:
       #    name: Boot_${{ env.KSUVER }}_${{ env.KERNEL_VERSION }}_${{ env.KSU_TYPE }}_AOSP_Signed
       #    path: kernel_workspace/boot_avb_tool/AOSP-Testkey-BootSigner-main/boot.img
