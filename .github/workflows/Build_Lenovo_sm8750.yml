@@ -498,28 +498,39 @@ jobs:
         run: |
           echo "🔧 Enabling DroidSpaces support..."
           cd kernel_workspace/common
-          sed -i 's/struct sysv_sem\s*sysvsem;/\/\/ struct sysv_sem sysvsem;/g' include/linux/sched.h
-          sed -i 's/struct sysv_shm\s*sysvshm;/\/\/ struct sysv_shm sysvshm;/g' include/linux/sched.h
-          if grep -q "ANDROID_KABI_USE(1," include/linux/sched.h; then
-            echo "Matched USE(1), replacing 6,7,8"
-            sed -i -e '/ANDROID_KABI_RESERVE(6);/{N;N;s|ANDROID_KABI_RESERVE(6);\n\s*ANDROID_KABI_RESERVE(7);\n\s*ANDROID_KABI_RESERVE(8);|#ifdef CONFIG_SYSVIPC\n\tANDROID_KABI_USE(6, struct sysv_sem sysvsem);\n\t_ANDROID_KABI_REPLACE(ANDROID_KABI_RESERVE(7); ANDROID_KABI_RESERVE(8), struct sysv_shm sysvshm);\n#else\n\tANDROID_KABI_RESERVE(6);\n\tANDROID_KABI_RESERVE(7);\n\tANDROID_KABI_RESERVE(8);\n#endif|;}' include/linux/sched.h
-          elif grep -q "ANDROID_KABI_RESERVE(1);" include/linux/sched.h; then
-            echo "Matched RESERVE(1), replacing 1,2,3"
-            sed -i -e '/ANDROID_KABI_RESERVE(1);/{N;N;s|ANDROID_KABI_RESERVE(1);\n\s*ANDROID_KABI_RESERVE(2);\n\s*ANDROID_KABI_RESERVE(3);|#ifdef CONFIG_SYSVIPC\n\tANDROID_KABI_USE(1, struct sysv_sem sysvsem);\n\t_ANDROID_KABI_REPLACE(ANDROID_KABI_RESERVE(2); ANDROID_KABI_RESERVE(3), struct sysv_shm sysvshm);\n#else\n\tANDROID_KABI_RESERVE(1);\n\tANDROID_KABI_RESERVE(2);\n\tANDROID_KABI_RESERVE(3);\n#endif|;}' include/linux/sched.h
-          elif grep -q "ANDROID_KABI_RESERVE(3);" include/linux/sched.h; then
-            echo "Matched fallback, replacing 3,4,5"
-            sed -i -e '/ANDROID_KABI_RESERVE(3);/{N;N;s|ANDROID_KABI_RESERVE(3);\n\s*ANDROID_KABI_RESERVE(4);\n\s*ANDROID_KABI_RESERVE(5);|#ifdef CONFIG_SYSVIPC\n\tANDROID_KABI_USE(3, struct sysv_sem sysvsem);\n\t_ANDROID_KABI_REPLACE(ANDROID_KABI_RESERVE(4); ANDROID_KABI_RESERVE(5), struct sysv_shm sysvshm);\n#else\n\tANDROID_KABI_RESERVE(3);\n\tANDROID_KABI_RESERVE(4);\n\tANDROID_KABI_RESERVE(5);\n#endif|;}' include/linux/sched.h
-          else
-            echo "No replaceable KABI field found"
-            exit 1
-          fi
-          echo "CONFIG_SYSVIPC=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_DEVTMPFS=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_PID_NS=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_POSIX_MQUEUE=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_NETFILTER_XT_TARGET_REJECT=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_NETFILTER_XT_TARGET_LOG=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_NETFILTER_XT_MATCH_RECENT=y" >> arch/arm64/configs/gki_defconfig
+          wget https://raw.githubusercontent.com/ravindu644/Droidspaces-OSS/main/Documentation/resources/kernel-patches/GKI/below-kernel-6.12/001.GKI-below-6.12-fix_sysvipc_kabi_6_7_8.patch -O droidspaces_sysvipc_kabi.patch
+          patch -p1 -F 3 < droidspaces_sysvipc_kabi.patch
+          rm -f droidspaces_sysvipc_kabi.patch
+
+          set_gki_config() {
+            local option="$1"
+            local defconfig="arch/arm64/configs/gki_defconfig"
+            if grep -q "^# ${option} is not set$" "$defconfig"; then
+              sed -i "s|^# ${option} is not set$|${option}=y|" "$defconfig"
+            elif grep -q "^${option}=" "$defconfig"; then
+              sed -i "s|^${option}=.*|${option}=y|" "$defconfig"
+            else
+              echo "${option}=y" >> "$defconfig"
+            fi
+          }
+
+          for option in \
+            CONFIG_SYSVIPC \
+            CONFIG_POSIX_MQUEUE \
+            CONFIG_IPC_NS \
+            CONFIG_PID_NS \
+            CONFIG_DEVTMPFS \
+            CONFIG_NETFILTER_XT_MATCH_ADDRTYPE \
+            CONFIG_NETFILTER_XT_TARGET_REJECT \
+            CONFIG_NETFILTER_XT_TARGET_LOG \
+            CONFIG_NETFILTER_XT_MATCH_RECENT \
+            CONFIG_IP_SET \
+            CONFIG_IP_SET_HASH_IP \
+            CONFIG_IP_SET_HASH_NET \
+            CONFIG_NETFILTER_XT_SET
+          do
+            set_gki_config "$option"
+          done
 
       - name: 🔧 Add NTSync support
         if: ${{ env.ENABLE_NTSYNC == 'true' }}
