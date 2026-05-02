@@ -152,28 +152,41 @@ jobs:
 
           echo "KERNEL_VERSION=$KERNEL_VERSION" >> $GITHUB_ENV
 
-          case "$KERNEL_VERSION" in
-            "6.6.56")
-              echo "os_patch_level=2024-11" >> $GITHUB_ENV
-              echo "COMMON_AOSP_TAG=android15-6.6-2024-11_r7" >> $GITHUB_ENV
-              ;;
-            "6.6.89")
-              echo "os_patch_level=2025-06" >> $GITHUB_ENV
-              echo "COMMON_AOSP_TAG=android15-6.6-2025-06_r3" >> $GITHUB_ENV
-              ;;
-            "6.6.102")
-              echo "os_patch_level=2025-10" >> $GITHUB_ENV
-              echo "COMMON_AOSP_TAG=android15-6.6-2025-10_r16" >> $GITHUB_ENV
-              ;;
-            "6.6.118")
-              echo "os_patch_level=2026-01" >> $GITHUB_ENV
-              echo "COMMON_AOSP_TAG=android15-6.6-2026-01_r15" >> $GITHUB_ENV
-              ;;
-            *)
-              echo "::error::Unsupported kernel version: $KERNEL_VERSION"
-              exit 1
-              ;;
-          esac
+          KERNEL_SERIES="${KERNEL_VERSION%.*}"
+          AOSP_COMMIT_PREFIX="$(printf '%s\n' "$DEFAULT_SUFFIX" | sed -nE 's/.*-g([0-9a-fA-F]+)-.*/\1/p' | tr 'A-F' 'a-f')"
+          if [ -z "$AOSP_COMMIT_PREFIX" ]; then
+            echo "::error::Failed to extract the AOSP commit hash from DEFAULT_SUFFIX='$DEFAULT_SUFFIX'"
+            exit 1
+          fi
+
+          COMMON_AOSP_TAG="$(
+            git ls-remote --tags https://android.googlesource.com/kernel/common "refs/tags/android*-${KERNEL_SERIES}-*" |
+              awk -v hash="$AOSP_COMMIT_PREFIX" '
+                $1 ~ "^" hash {
+                  ref = $2
+                  sub(/\^\{\}$/, "", ref)
+                  sub(/^refs\/tags\//, "", ref)
+                  print ref
+                }
+              ' |
+              sort -Vr |
+              head -n 1
+          )"
+          if [ -z "$COMMON_AOSP_TAG" ]; then
+            echo "::error::No AOSP tag found for kernel series '$KERNEL_SERIES' and commit prefix '$AOSP_COMMIT_PREFIX'"
+            exit 1
+          fi
+
+          os_patch_level="$(printf '%s\n' "$COMMON_AOSP_TAG" | sed -nE 's/^android[0-9]+-[0-9]+\.[0-9]+-([0-9]{4}-[0-9]{2})_r[0-9]+$/\1/p')"
+          if [ -z "$os_patch_level" ]; then
+            echo "::error::Failed to derive os_patch_level from COMMON_AOSP_TAG='$COMMON_AOSP_TAG'"
+            exit 1
+          fi
+
+          echo "Resolved AOSP commit prefix: $AOSP_COMMIT_PREFIX"
+          echo "Resolved COMMON_AOSP_TAG: $COMMON_AOSP_TAG"
+          echo "os_patch_level=$os_patch_level" >> $GITHUB_ENV
+          echo "COMMON_AOSP_TAG=$COMMON_AOSP_TAG" >> $GITHUB_ENV
 
           if [ -z "$CUSTOM_KERNEL_SUFFIX" ]; then
             echo "DEFAULT_SUFFIX=$DEFAULT_SUFFIX" >> $GITHUB_ENV
